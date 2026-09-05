@@ -353,8 +353,22 @@ local A = {
   lastDataTick = -1,
 }
 local HELI_ELECTRIC, HELI_NITRO, HELI_OMPHOBBY = 1, 2, 3
+-- Append Auto without changing the three persisted manual CHOICE values.
+-- Keep name inference separate so another naming provider can be added later.
+local AUTO_HELI = {
+  option=4, confirmTicks=30, ready=false, name=nil,
+  status="WAITING FOR FC NAME",
+}
+function AUTO_HELI.infer(name)
+  name = type(name) == "string" and string.upper(name):gsub("%s+$", "") or ""
+  if name:sub(-1) == "N" or name:sub(-5) == "NITRO" then
+    return HELI_NITRO
+  end
+  return HELI_ELECTRIC
+end
 local OPT = {
   heliType     = HELI_ELECTRIC,
+  autoHeliType = false,
   battBarMode   = 0,
   reservePct    = 0,
   battVoice     = false,
@@ -540,10 +554,21 @@ local function applyOptions(opts)
     -- RPM telemetry validates what a movement means; other sensors auto-detect.
     SRC.motorSwitch = opts.MotorSw or opts["Motor Switch"]
                       or defaultMotorSwitch
-    -- Heli Type CHOICE (1-based): Electric=1, Nitro=2, OMPHOBBY=3.
-    -- OMPHOBBY shares the percentage bar but has its own telemetry contract.
+    -- Heli Type CHOICE: Electric=1, Nitro=2, OMPHOBBY=3, Auto=4.
     local bb = tonumber(opts.HeliType or opts["Heli Type"]) or 1
-    if bb < 1 or bb > 3 then bb = 1 end
+    if bb ~= HELI_ELECTRIC and bb ~= HELI_NITRO
+       and bb ~= HELI_OMPHOBBY and bb ~= AUTO_HELI.option then bb = 1 end
+    local automatic = bb == AUTO_HELI.option
+    if automatic then
+      -- Preserve a known mode across settings edits. New Auto sessions wait
+      -- for a connected FC name before enabling type-dependent behavior.
+      bb = OPT.heliType == HELI_NITRO and HELI_NITRO or HELI_ELECTRIC
+      if not OPT.autoHeliType then
+        AUTO_HELI.ready, AUTO_HELI.name = false, nil
+        AUTO_HELI.status = "WAITING FOR FC NAME"
+      end
+    end
+    OPT.autoHeliType = automatic
     OPT.heliType = bb
     OPT.battBarMode = (bb == HELI_NITRO) and 1 or 0
     OPT.reservePct  = tonumber(opts.BattRsv or opts["Batt Reserve %"]) or 0
@@ -717,6 +742,7 @@ local function getModelName()
   if v ~= nil then return v end
   local ok, info = pcall(model.getInfo)
   local n = (ok and info and info.name) or nil
+  if OPT.autoHeliType and AUTO_HELI.name then n = AUTO_HELI.name end
   if not n or n == "" then n = "MODEL" end
   v = (string.gsub(n, ",", " "))
   F.modelName = v
@@ -1608,7 +1634,8 @@ local function tick(nowT)
                        + (D.adjustedPercent - A.displayPercent)
                          * SAFETY.displayPercentAlpha
   end
-  if not OPT.simTelemetry then
+  local modeReady = not OPT.autoHeliType or AUTO_HELI.ready
+  if not OPT.simTelemetry and modeReady then
     -- A raw switch move is never enough to silence a warning. Rotorflight must
     -- corroborate it with Gov or Hspd; OMPHOBBY uses stopped RPM telemetry.
     updateMotorAlertGate(nowT, governorMode, headRpm)
@@ -1630,7 +1657,7 @@ local function tick(nowT)
   end
   if OPT.battBarMode == 1 then
     local rx = getRxBatt()
-    if not OPT.simTelemetry then
+    if not OPT.simTelemetry and modeReady then
       updateRxPackAlert(rx)
       BATTERY_VOICE.updateRxDead(OPT.battVoice, rx)
     end
@@ -2549,7 +2576,7 @@ updateMotorAlertGate = function(now, governorMode, headRpm)
   end
 end
 local function tickFlightCount()
-  if OPT.simTelemetry then return end
+  if OPT.simTelemetry or (OPT.autoHeliType and not AUTO_HELI.ready) then return end
   local thisModel = modelKey(getModelName())
   if flightModel ~= thisModel then
     flightModel = thisModel
@@ -3119,6 +3146,14 @@ end
 local function updateBottom()
   local B = V.bottom
   if not B then return end
+  if OPT.autoHeliType and not AUTO_HELI.ready then
+    setLabel(B.header, AUTO_HELI.status or "WAITING FOR FC NAME", C_YELLOW)
+    setVisible(B.fill, false)
+    setLabel(B.center, "AUTO · WAIT", C_YELLOW, B.x, B.textY, B.w,
+             G.fontBattery, CENTERED)
+    setVisible(B.center, true)
+    return
+  end
   local configWarning
   local rxSettingsInvalid = B.mode == "nitro" and not OPT.rxPackValid
   if not OPT.simTelemetry then
@@ -3721,17 +3756,22 @@ end
 
 local function profileCancelOperationQueue(operation)
   local queue = operation and operation.queue or nil
-  if not queue or type(queue.clear) ~= "function" then return false end
-  if queue.currentMessage
-     and not profileOperationOwnsMessage(operation, queue.currentMessage) then
-    return false
-  end
-  for _, message in pairs(queue.messageQueue or {}) do
-    if message and not profileOperationOwnsMessage(operation, message) then
-      return false
+  if not queue or type(queue.messageQueue) ~= "table" then return false end
+  local ownsCurrent = profileOperationOwnsMessage(operation, queue.currentMessage)
+  if ownsCurrent and type(queue.clear) ~= "function" then return false end
+  -- RF Tool 2.3 stores pending requests in a dense FIFO. Remove only owned
+  -- entries, working backwards so unrelated requests keep their order.
+  for i = #queue.messageQueue, 1, -1 do
+    if profileOperationOwnsMessage(operation, queue.messageQueue[i]) then
+      table.remove(queue.messageQueue, i)
     end
   end
+  if not ownsCurrent then return true end
+  -- Cancelling an in-flight request also requires RF Tool to reset transport
+  -- buffers. Restore unrelated pending entries after its public clear().
+  local remaining = queue.messageQueue
   local ok = pcall(queue.clear, queue)
+  queue.messageQueue = remaining
   return ok
 end
 
@@ -5061,18 +5101,50 @@ local function profileModeAccess()
   return profiles, arming, flightStats, arming or flightStats
 end
 
-local function serviceBatteryProfileFeature(wgt, allowUi, event, touchState)
+local function syncAutoHeli(wgt)
+  if wgt.profileProviderChanged then
+    wgt.profileProviderChanged = false
+    profileResetConnection(wgt)
+    wgt.autoHeliNeedsReset = true
+    wgt.autoHeliCandidate, wgt.autoHeliCandidateTick = nil, nil
+  end
+  if not OPT.autoHeliType then return end
+  local shared = profileRfToolProvider()
+  local connected = profileControllerConnected(wgt)
+  local live = profileRadioLinkLive()
+  local name = shared and shared.modelName or nil
+  name = type(name) == "string" and trim(name) or nil
+  if name == "" then name = nil end
+  -- A short RSSI dropout can retain the last aircraft's warning latches.
+  -- An actual RF initialization/disconnection starts a new session.
+  if not connected or not name then wgt.autoHeliNeedsReset = true end
+  AUTO_HELI.sync(wgt, live and connected and name or nil,
+    not live and "AUTO DISCONNECTED" or "WAITING FOR FC NAME")
+end
+
+-- Check already-published identity changes before pumping the shared queue;
+-- check again after RF Tool may have published a newly initialized FC name.
+local function prepareBatteryProfileFeature(wgt)
   if not wgt then return end
-  local profileEligible, armingEligible, counterEligible, rfToolNeeded =
-    profileModeAccess()
+  local _, _, _, rfToolNeeded = profileModeAccess()
+  if OPT.autoHeliType then
+    if rfToolNeeded then profileRegisterWithRfTool(wgt) end
+    syncAutoHeli(wgt)
+  end
   if rfToolNeeded then
     profileServiceEmbeddedRfTool(wgt)
     profileRegisterWithRfTool(wgt)
   end
-  if wgt.profileProviderChanged then
-    wgt.profileProviderChanged = false
-    profileResetConnection(wgt)
-  end
+  syncAutoHeli(wgt)
+  clearFrameCache()
+end
+
+local function serviceBatteryProfileFeature(wgt, allowUi, event, touchState)
+  if not wgt then return end
+  local profileEligible, armingEligible, counterEligible, rfToolNeeded =
+    profileModeAccess()
+  profileEligible = profileEligible
+                    and (not OPT.autoHeliType or AUTO_HELI.ready)
   local now = profileNow()
   local connected = rfToolNeeded and profileControllerConnected(wgt)
   local showConnected = rfToolNeeded and connected or false
@@ -5245,12 +5317,14 @@ local function serviceBatteryProfileFeature(wgt, allowUi, event, touchState)
   end
   local controllerConnected = connected == true
   profileServiceFlightCounter(wgt,
-    counterEligible and controllerConnected, now)
+    counterEligible and controllerConnected
+      and (not OPT.autoHeliType or AUTO_HELI.ready), now)
   local armingConnected = armingEligible and controllerConnected
   profileServiceArmingStatus(wgt, armingConnected, now, allowUi)
 end
 
 return {
+  prepare=prepareBatteryProfileFeature,
   service=serviceBatteryProfileFeature,
   reset=profileResetConnection,
   buildPrompt=profileBuildEntryPrompt,
@@ -5258,6 +5332,53 @@ return {
   flightSourceChanged=profileFlightCounterSourceChanged,
 }
 end)()
+
+function AUTO_HELI.apply(widget, name)
+  local heliType = AUTO_HELI.infer(name)
+  local changed = name ~= AUTO_HELI.name or heliType ~= OPT.heliType
+                  or widget.autoHeliNeedsReset
+  AUTO_HELI.ready, AUTO_HELI.name = true, name
+  AUTO_HELI.status = nil
+  widget.autoHeliNeedsReset = false
+  if not changed then return end
+  batteryProfiles.reset(widget)
+  OPT.heliType = heliType
+  OPT.battBarMode = heliType == HELI_NITRO and 1 or 0
+  resetSessionStats()
+  resetSessionEvidence()
+  batteryProfiles.flightSourceChanged(widget)
+  timerThresholdArmed = nil
+  D.rxVoltage, D.rxCellVoltage, D.rxPercent = nil, nil, 0
+  A.lastDataTick = -1
+  clearFrameCache()
+  -- The same-type aircraft change is a new session too. Rebuild only when
+  -- visible, retaining the shared host and the saved Auto setting.
+  widget.layoutSignature = nil
+end
+
+function AUTO_HELI.sync(widget, name, waitingStatus)
+  local now = frameNow()
+  local wasReady = AUTO_HELI.ready
+  if not name or name ~= widget.autoHeliCandidate then
+    AUTO_HELI.ready = false
+    AUTO_HELI.status = name and "CONFIRMING FC NAME" or waitingStatus
+    widget.autoHeliCandidate = name
+    widget.autoHeliCandidateTick = name and now or nil
+    -- Invalidate eligibility and old operations immediately, before the
+    -- confirmation delay and before telemetry/profile processing can run.
+    if wasReady then batteryProfiles.reset(widget) end
+    A.lastDataTick = -1
+    return
+  end
+  local since = widget.autoHeliCandidateTick or now
+  if now < since then
+    widget.autoHeliCandidateTick = now
+    return
+  end
+  if now - since < AUTO_HELI.confirmTicks then return end
+  AUTO_HELI.apply(widget, name)
+  if not wasReady then A.lastDataTick = -1 end
+end
 
 local function buildUi()
   if not lvgl then return end
@@ -5290,6 +5411,7 @@ end
 
 local function refresh(widget, event, touchState)
   clearFrameCache()
+  batteryProfiles.prepare(widget)
   ensureLayout(widget, event ~= nil)
   local serviced
   if OPT.simTelemetry then
@@ -5302,6 +5424,7 @@ local function refresh(widget, event, touchState)
 end
 local function background(widget)
   clearFrameCache()
+  batteryProfiles.prepare(widget)
   -- Session extrema are flight data too; keep them current while another page
   -- is visible instead of recording only the moments this dashboard is open.
   if OPT.simTelemetry then
@@ -5312,6 +5435,8 @@ local function background(widget)
   end
 end
 local function create(zone, options)
+  OPT.autoHeliType = false
+  AUTO_HELI.ready, AUTO_HELI.name = false, nil
   -- Drop any stale frame cache (e.g. cached model name) before loading flights.
   clearFrameCache()
   applyOptions(options)
@@ -5344,6 +5469,7 @@ end
 local function update(widget, options)
   widget.options = options
   local previousHeliType = OPT.heliType
+  local previousAutoHeliType = OPT.autoHeliType
   local previousSimulation = OPT.simTelemetry
   local previousFlightCounter = OPT.flightCounter
   local previousReserve = OPT.reservePct
@@ -5352,6 +5478,11 @@ local function update(widget, options)
   local previousRxValid = OPT.rxPackValid
   local previousMotorSource = SRC.motorSwitch
   applyOptions(options)
+  if previousAutoHeliType ~= OPT.autoHeliType then
+    widget.autoHeliCandidate, widget.autoHeliCandidateTick = nil, nil
+    widget.autoHeliNeedsReset = true
+    batteryProfiles.reset(widget)
+  end
   local heliChanged = previousHeliType ~= OPT.heliType
   local simulationChanged = previousSimulation ~= OPT.simTelemetry
   local flightCounterChanged = previousFlightCounter ~= OPT.flightCounter
@@ -5440,7 +5571,7 @@ local options = {
                              "Titanium Ember", "Aurora", "Desert Night" } },
   { "TxBatt",   CHOICE, 1, { "LiPo", "Li-Ion" } },
   { "MinFlight", VALUE, TOPBAR_MIN_DUR_DEFAULT, -30, 120 },
-  { "HeliType", CHOICE, 1, { "Electric", "Nitro", "OMPHOBBY" } },
+  { "HeliType", CHOICE, 1, { "Electric", "Nitro", "OMPHOBBY", "Auto" } },
   { "BattRsv", VALUE, 20, 0, 50 },
   { "BattVoice", BOOL, 0 },
   { "RxPackMin", STRING, "6.60" },

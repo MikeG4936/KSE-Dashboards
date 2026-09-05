@@ -6,6 +6,11 @@
 !/KSE4/
 !/KSE5/
 !/theme-gallery/
+!/tests/
+
+# Regression checks run on a desktop, not on the transmitter.
+/tests/*
+!/tests/auto_heli_type.lua
 
 # Local future-widget design/reference document; do not publish.
 /KSE_FUTURE_WIDGET_IMPLEMENTATION_BLUEPRINT.md
