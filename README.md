@@ -7,7 +7,7 @@ KSE4 and KSE5 are full-screen EdgeTX telemetry dashboards for RC helicopters. Th
 
 Both dashboards use an **800 × 480 design reference** and scale their layouts to the actual radio screen or widget zone, including 480 × 320 and 480 × 272 displays. This shared reference does not require an 800 × 480 radio; each dashboard retains its own layout, proportions, and EdgeTX font choices.
 
-Choose the version whose layout you prefer. Both versions can be installed on the same radio, but only one needs to be added to a telemetry screen. Do not have multiple screens setup at one time, please choose one or the other when setting up your screen. Using them at the same time on separate can create issues and cause your radio to go into Emergency Mode.
+Choose the version whose layout you prefer. Both folders can be installed on the same radio, but configure only one KSE widget instance across all telemetry screens. Duplicate-instance protection is not implemented; multiple instances share state and are unsupported.
 
 > **Safety:** These widgets are informational aids. They do not replace correctly configured radio alarms, motor safety, telemetry-loss warnings, or failsafe settings. Bench-test a new installation with the motor physically unable to start before flying.
 
@@ -79,7 +79,7 @@ KSE5 -> /WIDGETS/KSE5/
 
 Keep `main.lua`, the image files, and the complete `BatterySounds` folder together. Do not rename the KSE4 or KSE5 folder because the widget uses absolute paths for its images and sounds.
 
-If you plan to use **KSE Counter**, also copy the repository's `flights-count.csv` to the root of the transmitter SD card as `/flights-count.csv`. Both dashboards share that one file and store counts by model name. The Rotorflight FC counter does not use it.
+For a first **KSE Counter** installation with no existing history, copy the repository's `flights-count.csv` to the root of the transmitter SD card as `/flights-count.csv`. When upgrading, preserve your existing file and back up any `.bak` and `.tmp` companions; do not overwrite your history with the starter CSV. Both dashboards share that one file and store counts by model name. The Rotorflight FC counter does not use it.
 
 You may install both folders if you want to compare the two layouts on the radio.
 
@@ -107,6 +107,15 @@ With the motor disconnected or otherwise physically unable to start, verify:
 - The selected flight counter updates according to its documented behavior.
 - Confirm that Timer1 is setup with the motor switch - this is configured in EdgeTX completely separate from KSE Dashboard.
 
+For this update, also check the following on the radio, testing one dashboard at a time:
+
+- With a known arming blocker present, the diagnostic banner appears while disarmed, clears after successful arming, and resumes when disarmed again if a blocker remains. Head-speed, battery, and link displays continue updating while armed.
+- Select a configured battery profile while disarmed. Confirm the saved indication and verify the selection survives an FC restart. Test the picker buttons and close action at your radio's resolution.
+- For the Rotorflight counter, compare the displayed total with RF Tool after a qualifying arm/disarm cycle. For KSE Counter, cross the Timer 1 threshold, allow the save to finish, and confirm the count survives a normal radio restart.
+- Check haptics, voice, model-image rendering, and foreground/background operation. During profile loading and reconnects, watch for frozen telemetry or a dashboard that fails to recover.
+
+Record the radio model, EdgeTX and RF Tool versions, dashboard, helicopter type, and counter choice with any result. Physical operation, memory, callback timing and RF latency still need radio validation; passing desktop fixtures does not establish those results.
+
 ## RF Tool behavior by model type
 
 | Model and counter | RF Tool used | Battery profiles | Arming diagnostics | Rotorflight FC count |
@@ -118,6 +127,8 @@ With the motor disconnected or otherwise physically unable to start, verify:
 | OMPHOBBY + KSE Counter | No | No | No | No |
 
 Normal dashboard telemetry comes directly from EdgeTX telemetry sensors. RF Tool is used for the additional FC-side operations shown above.
+
+For OMPHOBBY, select **KSE Counter**. The Rotorflight counter remains selectable in widget settings, but that pairing is unsupported and may start an unnecessary RF Tool host.
 
 ### KSE MSP scheduling during flight
 
@@ -149,6 +160,8 @@ This indicator is display-only. It reads normal EdgeTX telemetry and does not ad
 Battery profiles are available only in Electric mode. After RF Tool connects and disarm is confirmed, KSE reads the active Rotorflight battery profile and all six configured capacities. The picker lists only profiles with a positive configured capacity; zero-capacity profiles are treated as not configured. If no profiles are configured, the picker reports that instead of offering an invalid choice. If exactly one profile has a positive configured capacity, KSE can select it automatically.
 
 KSE checks confirmed-disarm evidence before admitting a profile change and each subsequent read-back/save stage. KSE writes the requested profile, verifies it from the FC, and saves it to FC memory before displaying it as confirmed. Losing confirmed-disarm evidence stops new stages, but an already-active request remains subject to RF Tool's retries as described above.
+
+On compact screens, KSE4 uses the native menu when available and falls back to a fitted dialog. Both dashboards report `UPDATE EDGETX FOR PROFILE PICKER` if the required UI APIs are unavailable.
 
 ### Nitro mode
 
@@ -243,7 +256,7 @@ After the controller saves and reconnects, return to the model's Telemetry page 
 | Sensor | Purpose |
 | --- | --- |
 | `RQly`, `RQLY`, or `LQ` | Link-quality display and connection evidence. |
-| `ARM` | Armed/disarmed safety state for the Rotorflight FC counter and profile-change checks. |
+| `ARM` | Armed/disarmed evidence for all KSE MSP requests, including diagnostics, FC-count reads and profile changes. |
 
 ### Rotorflight Electric and Nitro
 
@@ -327,6 +340,12 @@ Special thanks to Victor Malpica, Colin Bell, Martin Rottmair, and Tim Yantes fo
 ## Source and updates
 
 KSE4 and KSE5 are maintained together so functional and safety changes can be applied to both variants. The repository publishes readable Lua source rather than a precompiled radio-specific artifact.
+
+### Validation and remaining work
+
+The automated checks use the EdgeTX 2.12.1 Lua core and pinned Rotorflight queue/API code with mocked radio services. They cover ARM-only request admission, profile staging, cross-dashboard behavior, count-file recovery, picker geometry and image bounds. See the [MSP tests](tests/msp_admission/README.md) and [compiler tooling](tools/edgetx/README.md) for reproducible checks. Real-radio SD durability, rendering, memory, timing and RF performance remain unverified.
+
+The broader [optimization plan](docs/implementation-plan.md) is not fully complete. Remaining software work includes duplicate-widget protection, shared-engine extraction beyond storage/MSP admission, general display/alert sensor-cache improvements, unsupported counter/type handling, and dead-code cleanup. RF background servicing during outstanding requests and external-host ownership also remain open; the [RF integration assessment](docs/rf-adapter-design.md) records the upstream receive/transport constraints. These are separate from the accepted limitation that an already-active RF Tool request can continue retrying after KSE stops admitting work.
 
 ## Disclaimer
 
