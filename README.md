@@ -227,16 +227,19 @@ Sensor names are case-sensitive. Discover telemetry while the receiver and FC ar
 
 ### Rotorflight telemetry CLI setup
 
-To ensure the correct telemetry sensors are enabled, connect the flight controller to RF Configurator, open the CLI, and paste these four lines:
+For Rotorflight over CRSF/ExpressLRS, connect the flight controller to RF Configurator, open the CLI, and paste these five lines. They enable the dashboard sensors, flight-mode/model/throttle/arming/rescue telemetry, and RF Tool adjustment announcements. Detailed ESC1/ESC2 and separate combined ESC voltage/current reporting are omitted; the dashboard’s battery, BEC and ESC-temperature readings remain available.
 
 ```text
 feature TELEMETRY
 set crsf_telemetry_mode = CUSTOM
-set telemetry_sensors = 43,60,61,89,88,93,15,3,4,5,6,7,8,95,96,97,90,91,92,99,42,46,50,17,18,19,20,21,22,23,24,25,27,28,30,31,32,33,41
+set telemetry_sensors = 43,60,61,89,88,93,15,3,4,5,6,7,8,95,96,97,90,91,92,99,50,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+set telemetry_interval = 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
 save
 ```
 
-After the controller saves and reconnects, return to the model's Telemetry page on the radio and discover sensors again so any newly enabled sensors are added.
+The list contains 21 enabled entries followed by zeros for unused slots. The interval line restores Rotorflight’s default sensor timing. If you use custom intervals or additional sensors for other alarms, logs or widgets, adapt the commands before applying them.
+
+After the controller saves and reconnects, return to the model's Telemetry page on the radio and discover sensors again so any newly enabled sensors are added. If you choose to delete all sensors first, recheck your sensor settings, logging selections and telemetry-based model functions afterward.
 
 ### Common sensors
 
