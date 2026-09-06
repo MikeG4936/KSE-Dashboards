@@ -3643,6 +3643,111 @@ local PROFILE_SNAPSHOT_ACTIVE_TIMEOUT = 500
 local PROFILE_SNAPSHOT_CAPACITY_TIMEOUT = 1200
 local PROFILE_FLIGHT_STATS_TIMEOUT = 200
 
+-- BEGIN SHARED msp_admission
+local MspAdmission = (function()
+-- KSE admission policy only; RF Tool retains its transport and retry policy.
+local Admission = { settleTicks=40 }
+
+function Admission.sample(name)
+  -- Resolve every safety sample by name. Display caches can survive sensor-ID
+  -- reuse, and getValue cannot establish currentness/freshness.
+  if type(_G.getFieldInfo) ~= "function"
+     or type(_G.getSourceValue) ~= "function" then return nil end
+  local ok, info = pcall(_G.getFieldInfo, name)
+  if not ok or type(info) ~= "table" or type(info.id) ~= "number" then return nil end
+  local read, value, current, fresh = pcall(_G.getSourceValue, info.id)
+  if type(value) == "table" then value = value.value end
+  if not read or current ~= true or fresh ~= true
+     or type(value) ~= "number" or value ~= value then return nil end
+  return value
+end
+
+function Admission.ground(wgt)
+  local reason
+  local arm, gov, rpm = Admission.sample("ARM"), Admission.sample("Gov"), Admission.sample("Hspd")
+  local host = _G.rf2
+  local hostState = type(host) == "table" and type(host.widget) == "table"
+                    and host.widget.state or nil
+  local queue = type(host) == "table" and host.mspQueue or nil
+  local widget = type(host) == "table" and host.widget or nil
+  local ok, info = pcall(model.getInfo)
+  local name = ok and type(info) == "table" and (info.filename or info.name) or nil
+  local linked, rssi = false, nil
+  if type(_G.getRSSI) == "function" then linked, rssi = pcall(_G.getRSSI) end
+  if OPT.simTelemetry or not linked or type(rssi) ~= "number" or not (rssi > 0)
+     or type(name) ~= "string" then
+    reason = "WAITING FOR LIVE TELEMETRY"
+  elseif wgt.profileRfState == "armed" or hostState == "armed" then
+    reason = "DISARM TO CHANGE PROFILE"
+  elseif type(queue) ~= "table"
+     or (wgt.profileRfState ~= "connected" and wgt.profileRfState ~= "disarmed")
+     or (widget ~= nil and hostState ~= "connected" and hostState ~= "disarmed") then
+    reason = "WAITING FOR RF TOOL CONNECTION"
+  elseif arm == nil or arm < 0 or arm > 255 or arm > math.floor(arm) then
+    reason = "WAITING FOR ARM TELEMETRY"
+  elseif math.floor(arm) % 2 == 1 then
+    reason = "DISARM TO CHANGE PROFILE"
+  elseif gov == nil or gov < 0 or gov > 9 or gov > math.floor(gov)
+     or not GOV_STOP_STATE[math.floor(gov)] then
+    reason = "WAITING FOR STOPPED GOVERNOR"
+  elseif rpm == nil or rpm < 0 or rpm > 0 then
+    reason = "WAITING FOR STOPPED ROTOR"
+  end
+  local now = (getTime and getTime()) or 0
+  if reason or wgt.mspGroundProvider ~= host or wgt.mspGroundModel ~= name
+     or wgt.mspGroundQueue ~= queue or wgt.mspGroundWidget ~= widget then
+    wgt.mspGroundSince = nil
+    wgt.mspGroundEpoch = (wgt.mspGroundEpoch or 0) + 1
+  end
+  wgt.mspGroundProvider, wgt.mspGroundModel = host, name
+  wgt.mspGroundQueue, wgt.mspGroundWidget = queue, widget
+  if reason then return false, reason end
+  wgt.mspGroundSince = wgt.mspGroundSince or now
+  if now - wgt.mspGroundSince < Admission.settleTicks then
+    return false, "WAITING FOR STABLE GROUND"
+  end
+  return true
+end
+
+function Admission.capture(wgt, operation)
+  operation.provider = wgt.mspGroundProvider
+  operation.modelName = wgt.mspGroundModel
+  operation.epoch = wgt.mspGroundEpoch
+  operation.heliType = OPT.heliType
+end
+
+function Admission.valid(wgt, operation)
+  return operation ~= nil and Admission.ground(wgt)
+     and operation.provider == wgt.mspGroundProvider
+     and operation.modelName == wgt.mspGroundModel
+     and operation.queue == wgt.mspGroundQueue
+     and operation.epoch == wgt.mspGroundEpoch
+     and operation.heliType == OPT.heliType
+end
+
+function Admission.cancelPending(operation)
+  local queue = operation and operation.queue
+  if not queue or type(queue.messageQueue) ~= "table" then return false end
+  local pending, write = queue.messageQueue, 1
+  local currentOwned = false
+  local owned = {}
+  for _, message in ipairs(operation.messages or {}) do owned[message] = true end
+  currentOwned = owned[queue.currentMessage] == true
+  for read=1,#pending do
+    if not owned[pending[read]] then
+      pending[write] = pending[read]
+      write = write + 1
+    end
+  end
+  for i=#pending,write,-1 do pending[i] = nil end
+  -- Never clear private framing/receive buffers or modify an active request.
+  return not currentOwned
+end
+
+return Admission
+end)()
+-- END SHARED msp_admission
+
 local function profileNow()
   return (getTime and getTime()) or 0
 end
@@ -3921,28 +4026,9 @@ local function profileSetEntryPrompt(visible, title, detail, color, compact)
   if visible and compact then setVisible(prompt.accent, false) end
 end
 
-local function profileOperationOwnsMessage(operation, message)
-  if not operation or not message then return false end
-  for _, ownMessage in ipairs(operation.messages or {}) do
-    if ownMessage == message then return true end
-  end
-  return false
-end
 
 local function profileCancelOperationQueue(operation)
-  local queue = operation and operation.queue or nil
-  if not queue or type(queue.clear) ~= "function" then return false end
-  if queue.currentMessage
-     and not profileOperationOwnsMessage(operation, queue.currentMessage) then
-    return false
-  end
-  for _, message in pairs(queue.messageQueue or {}) do
-    if message and not profileOperationOwnsMessage(operation, message) then
-      return false
-    end
-  end
-  local ok = pcall(queue.clear, queue)
-  return ok
+  return MspAdmission.cancelPending(operation)
 end
 
 local function profileOperationFailed(wgt, text, token)
@@ -3977,10 +4063,11 @@ local function profileSelectionVerified(wgt, zeroBased, token)
   local operation = wgt.profileOperation
   if not operation or operation.token ~= token
      or operation.kind ~= "select" then return end
+  if not MspAdmission.valid(wgt, operation) then return end
 
   local index = tonumber(zeroBased)
-  if not index or index ~= math.floor(index)
-     or index < 0 or index >= BATTERY_PROFILE_COUNT then
+  if not index or index > math.floor(index)
+     or not (index >= 0 and index < BATTERY_PROFILE_COUNT) then
     profileCancelOperationQueue(operation)
     profileOperationFailed(wgt, "INVALID PROFILE REPLY", token)
     return
@@ -4008,6 +4095,7 @@ local function profileSelectionSaved(wgt, displayProfile, token)
   if not operation or operation.token ~= token
      or operation.kind ~= "select" or not operation.verified
      or operation.target ~= displayProfile then return end
+  if not MspAdmission.valid(wgt, operation) then return end
   wgt.profileOperation = nil
   wgt.profileBusy = false
   wgt.profilePending = nil
@@ -4049,6 +4137,7 @@ local function profileActiveCapacityReceived(wgt, buf, token)
   local operation = wgt.profileOperation
   if not operation or operation.token ~= token
      or operation.kind ~= "activeCapacity" then return end
+  if not MspAdmission.valid(wgt, operation) then return end
   local capacity = profileReadU16(buf, 3)
   local replyProfile = profileReadByte(buf, 12)
   local displayProfile = replyProfile and (replyProfile + 1)
@@ -4237,6 +4326,7 @@ end
 local function profileFinishArmingStatus(wgt, status, token)
   local operation = wgt and wgt.armingStatusOperation or nil
   if not operation or operation.token ~= token then return end
+  if not MspAdmission.valid(wgt, operation) then return end
   wgt.armingStatusOperation = nil
   wgt.armingStatusPending = false
   if OPT.heliType == HELI_OMPHOBBY then
@@ -4254,6 +4344,7 @@ local function profileFinishArmingStatus(wgt, status, token)
 end
 
 local function profileBeginArmingStatus(wgt)
+  if not MspAdmission.ground(wgt) then return false end
   if OPT.heliType == HELI_OMPHOBBY then return false end
   if wgt.armingStatusPending or wgt.profileBusy then return false end
   local queue = profileSharedQueue()
@@ -4267,6 +4358,7 @@ local function profileBeginArmingStatus(wgt)
     token=token, kind="armingStatus", startedAt=profileNow(),
     queue=queue, messages={},
   }
+  MspAdmission.capture(wgt, operation)
   wgt.armingStatusOperation = operation
   wgt.armingStatusPending = true
   local ok, added = profileCallApiAndCollect(queue, operation, function()
@@ -4279,7 +4371,6 @@ local function profileBeginArmingStatus(wgt)
     for _, message in ipairs(operation.messages) do
       if type(message) == "table" and message.command == 101 then
         decorated = true
-        message.retryDelay = 86400
         message.errorHandler = function()
           profileFailArmingStatus(wgt, token)
         end
@@ -4294,7 +4385,8 @@ local function profileBeginArmingStatus(wgt)
 end
 
 local function profileServiceArmingStatus(wgt, connected, now, allowUi)
-  if OPT.heliType == HELI_OMPHOBBY or not connected then
+  if OPT.heliType == HELI_OMPHOBBY or not connected
+     or not MspAdmission.ground(wgt) then
     if wgt.armingStatusOperation then
       profileCancelOperationQueue(wgt.armingStatusOperation)
     end
@@ -4342,8 +4434,8 @@ local function profileYieldArmingStatusToFlightStats(wgt, now)
 end
 
 -- RotorFlight persistent flight counter ------------------------------------
--- Each MSP 14 message is a single bounded send. After a real arm/disarm, up
--- to six fresh reads allow the FC's persistent total time to settle.
+-- KSE admits up to six post-flight reads to let the FC total settle.
+-- RF Tool owns each admitted request's transmissions and retry lifetime.
 local function profileFlightCounterSelected()
   return OPT.flightCounter == FC.ROTORFLIGHT
 end
@@ -4367,6 +4459,7 @@ local function profileFinishFlightStats(wgt, stats, token)
   local operation = wgt and wgt.profileOperation or nil
   if not operation or operation.kind ~= "flightStats"
      or operation.token ~= token then return end
+  if not MspAdmission.valid(wgt, operation) then return end
   wgt.profileOperation = nil
   wgt.profileBusy = false
   wgt.profilePending = nil
@@ -4422,6 +4515,7 @@ local function profileFailFlightStats(wgt, token, status)
 end
 
 local function profileBeginFlightStats(wgt)
+  if not MspAdmission.ground(wgt) then return false end
   if wgt.profileBusy then return false end
   local queue = profileSharedQueue()
   if not queue or not profileQueueIdle(queue) then return false end
@@ -4443,6 +4537,7 @@ local function profileBeginFlightStats(wgt)
     queue=queue, messages={}, model=flightModel,
     refreshBase=FC.refreshBase, refreshAttempt=refreshAttempt,
   }
+  MspAdmission.capture(wgt, operation)
   wgt.profileOperation = operation
   wgt.profileBusy = true
   FC.pending, FC.wanted, FC.status = true, false, "LOADING"
@@ -4459,7 +4554,6 @@ local function profileBeginFlightStats(wgt)
     for _, message in ipairs(operation.messages) do
       if type(message) == "table" and message.command == 14 then
         decorated = true
-        message.retryDelay = 86400
         message.errorHandler = function()
           profileFailFlightStats(wgt, token, "NO REPLY")
         end
@@ -4505,8 +4599,9 @@ local function profileSnapshotActiveReceived(wgt, zeroBased, token)
   local operation = wgt.profileOperation
   if not operation or operation.token ~= token
      or operation.kind ~= "snapshot" then return end
+  if not MspAdmission.valid(wgt, operation) then return end
   local index = tonumber(zeroBased)
-  if index and index == math.floor(index)
+  if index and not (index > math.floor(index))
      and index >= 0 and index < BATTERY_PROFILE_COUNT then
     wgt.profileActive = index + 1
     wgt.profileInitialReadValid = true
@@ -4528,6 +4623,7 @@ local function profileSnapshotCapacitiesReceived(wgt, value, token, raw)
   local operation = wgt.profileOperation
   if not operation or operation.token ~= token
      or operation.kind ~= "snapshot" then return end
+  if not MspAdmission.valid(wgt, operation) then return end
   local capacities, allProfiles
   if raw then
     wgt.profileCapacityReplyLength = type(value) == "table" and #value or 0
@@ -4549,6 +4645,7 @@ local function profileSnapshotCapacitiesReceived(wgt, value, token, raw)
 end
 
 local function profileBeginSnapshot(wgt)
+  if not MspAdmission.ground(wgt) then return false end
   if wgt.profileBusy then return false end
   local queue = profileSharedQueue()
   if not queue then
@@ -4565,6 +4662,7 @@ local function profileBeginSnapshot(wgt)
     token=token, kind="snapshot", startedAt=profileNow(),
     queue=queue, messages={}, activeDone=false, capacityDone=false,
   }
+  MspAdmission.capture(wgt, operation)
   wgt.profileOperation = operation
   wgt.profileBusy = true
   wgt.profileInitialReadRequested = true
@@ -4635,6 +4733,10 @@ local function profileBeginSnapshot(wgt)
 end
 
 local function profileBeginOperation(wgt, kind, target)
+  if not MspAdmission.ground(wgt) then return false end
+  if kind ~= "select" and kind ~= "activeCapacity" then return false end
+  if type(target) ~= "number" or not (target >= 1 and target <= BATTERY_PROFILE_COUNT)
+     or target > math.floor(target) then return false end
   if wgt.profileBusy then return false end
   local queue = profileSharedQueue()
   if not queue then
@@ -4651,6 +4753,7 @@ local function profileBeginOperation(wgt, kind, target)
     token=token, kind=kind, target=target, startedAt=profileNow(),
     queue=queue, messages={}, stage=kind == "select" and "set" or nil,
   }
+  MspAdmission.capture(wgt, operation)
   wgt.profileOperation = operation
   wgt.profileBusy = true
   wgt.profilePending = kind == "select" and target or nil
@@ -4682,13 +4785,16 @@ local function profileBeginOperation(wgt, kind, target)
 
   -- A profile change is not complete until the FC acknowledges the runtime
   -- selection, MSP 175 reads the same profile back, and MSP 250 commits it to
-  -- EEPROM. All three messages stay on RF Tool's one shared MSP queue.
+  -- EEPROM. Admit each continuation on a later checked service pass.
+  local verifyMessage, saveMessage
   local setMessage = {
     command=MSP_SET_BATTERY_PROFILE,
     payload={ target - 1 },
     processReply=function()
       local current = wgt.profileOperation
-      if not current or current.token ~= token then return end
+      if not current or current.token ~= token
+         or not MspAdmission.valid(wgt, current) then return end
+      current.nextMessage = verifyMessage
       current.stage = "verify"
       current.stageStartedAt = profileNow()
       profileSetMessage(wgt,
@@ -4696,15 +4802,19 @@ local function profileBeginOperation(wgt, kind, target)
     end,
     errorHandler=failed,
   }
-  local verifyMessage = {
+  verifyMessage = {
     command=MSP_BATTERY_PROFILE,
     processReply=function(_, buf)
       profileSelectionVerified(wgt,
         type(buf) == "table" and buf[1] or nil, token)
+      if wgt.profileOperation == operation and operation.verified
+         and MspAdmission.valid(wgt, operation) then
+        operation.nextMessage = saveMessage
+      end
     end,
     errorHandler=failed,
   }
-  local saveMessage = {
+  saveMessage = {
     command=MSP_EEPROM_WRITE,
     processReply=function()
       profileSelectionSaved(wgt, target, token)
@@ -4715,8 +4825,6 @@ local function profileBeginOperation(wgt, kind, target)
   operation.messages[#operation.messages + 1] = verifyMessage
   operation.messages[#operation.messages + 1] = saveMessage
   queue:add(setMessage)
-  queue:add(verifyMessage)
-  queue:add(saveMessage)
   return true
 end
 
@@ -4782,25 +4890,8 @@ local function profileStopCapacityRead(wgt)
 end
 
 local function profileSwitchUnsafe(wgt)
-  if wgt and wgt.profileRfState == "armed" then
-    return true, "DISARM TO CHANGE PROFILE"
-  end
-  local armRaw, armCurrent = get("ARM")
-  local arm = tonumber(armRaw)
-  -- Explicit unsafe telemetry blocks the change; a missing sensor does not
-  -- create a permanent lock.
-  if armCurrent == true and arm ~= nil and math.floor(arm) % 2 == 1 then
-    return true, "DISARM TO CHANGE PROFILE"
-  end
-  local governorMode = sensors.getGovernorMode()
-  if governorMode ~= nil and GOV_RUNNING_STATE[governorMode] then
-    return true, "STOP GOVERNOR TO CHANGE PROFILE"
-  end
-  local headspeed = sensors.getHeadspeed()
-  if D.rpmValid and headspeed >= 1 then
-    return true, "STOP ROTOR TO CHANGE PROFILE"
-  end
-  return false, nil
+  local allowed, reason = MspAdmission.ground(wgt)
+  return not allowed, reason
 end
 
 local closeBatteryProfileMenu
@@ -5099,6 +5190,7 @@ end
 
 local function profileResetConnection(wgt)
   if not wgt then return end
+  wgt.mspGroundSince = nil
   if wgt.armingStatusOperation then
     profileCancelOperationQueue(wgt.armingStatusOperation)
   end
@@ -5155,10 +5247,9 @@ end
 
 local function profileFlightCounterArmState(wgt)
   if wgt.profileRfState == "armed" then return true end
-  if wgt.profileRfState == "disarmed" then return false end
-  local value, current, _, known = get("ARM")
-  value = tonumber(value)
-  if current ~= true or known ~= true or value == nil then return nil end
+  local value = MspAdmission.sample("ARM")
+  if value == nil or value < 0 or value > 255
+     or value > math.floor(value) then return nil end
   return math.floor(value) % 2 == 1
 end
 
@@ -5284,8 +5375,54 @@ local function profileModeAccess()
   return profiles, arming, flightStats, arming or flightStats
 end
 
+-- Admission and continuations are KSE work. An already active RF Tool
+-- transaction is intentionally left alone, including its upstream retries.
+local function profileServiceMspAdmission(wgt, now)
+  local allowed = MspAdmission.ground(wgt)
+  local operation = wgt.profileOperation
+  if operation and (not allowed or not MspAdmission.valid(wgt, operation)) then
+    local kind, target = operation.kind, operation.target
+    profileCancelOperationQueue(operation)
+    if kind == "flightStats" then
+      profileFailFlightStats(wgt, operation.token, "WAITING FOR GROUND")
+      FC.wanted = true
+    else
+      profileOperationFailed(wgt, "REQUEST PAUSED - CHECK PROFILE ON GROUND", operation.token)
+      if kind == "snapshot" then
+        wgt.profileInitialReadRequested = false
+        wgt.profileCapacityReadRequested = false
+        wgt.profileInitialReadFinished = false
+        wgt.profileCapacityReadFinished = false
+      elseif kind == "activeCapacity" then
+        wgt.profileActiveCapacityRequested = target
+      end
+      wgt.profileSelectionRequested = nil
+    end
+  end
+  local status = wgt.armingStatusOperation
+  if status and (not allowed or not MspAdmission.valid(wgt, status)) then
+    profileFailArmingStatus(wgt, status.token)
+  end
+  if not allowed then
+    wgt.armingDisableFlags = nil
+    wgt.armingBlockerText = nil
+    wgt.armingStatusUpdatedAt = nil
+  end
+  profileCheckOperationTimeout(wgt, now)
+  operation = wgt.profileOperation
+  if operation and operation.nextMessage
+     and MspAdmission.valid(wgt, operation)
+     and profileQueueIdle(operation.queue) then
+    local message = operation.nextMessage
+    operation.nextMessage = nil
+    operation.stageStartedAt = now
+    operation.queue:add(message)
+  end
+end
+
 local function serviceBatteryProfileFeature(wgt, allowUi, event, touchState)
   if not wgt then return end
+  profileServiceMspAdmission(wgt, profileNow())
   local profileEligible, armingEligible, counterEligible, rfToolNeeded =
     profileModeAccess()
   if rfToolNeeded then
@@ -5347,7 +5484,6 @@ local function serviceBatteryProfileFeature(wgt, allowUi, event, touchState)
         "CURRENT PROFILE " .. tostring(telemetryProfile), C_DIM)
     end
 
-    profileCheckOperationTimeout(wgt, now)
     local unsafe, unsafeMessage = profileSwitchUnsafe(wgt)
     local transportReady = profileTransport() ~= nil
     local connectionSettled = now >= (wgt.profileConnectReadyAt or now)

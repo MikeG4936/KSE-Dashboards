@@ -56,6 +56,12 @@
 !/src/shared/
 /src/shared/*
 !/src/shared/count_storage.lua
+!/src/shared/msp_admission.lua
+!/tests/msp_admission/
+/tests/msp_admission/*
+!/tests/msp_admission/*.py
+!/tests/msp_admission/*.lua
+!/tests/msp_admission/README.md
 
 # Local future-widget design/reference document; do not publish.
 /KSE_FUTURE_WIDGET_IMPLEMENTATION_BLUEPRINT.md

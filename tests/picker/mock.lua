@@ -4,11 +4,12 @@ LCD_W=800; LCD_H=480
 SMLSIZE=1; MIDSIZE=2; DBLSIZE=3; CENTER=4
 lcd={RGB=function(r,g,b) return r*65536+g*256+b end}
 getTime=function() return __mock.now end
-getFieldInfo=function(name) return {id=name,name=name} end
+local ids={ARM=1,Gov=2,Hspd=3}
+getFieldInfo=function(name) return {id=ids[name] or name,name=name} end
 getValue=function() return 0 end
 getSourceValue=function(name)
-  if name=="ARM" then return __mock.arm,true,true end
-  if name=="Gov" or name=="Hspd" then return 0,true,true end
+  if name==1 then return __mock.arm,true,true end
+  if name==2 or name==3 then return 0,true,true end
   return nil,false,false
 end
 getRSSI=function() return 100 end

@@ -119,6 +119,16 @@ With the motor disconnected or otherwise physically unable to start, verify:
 
 Normal dashboard telemetry comes directly from EdgeTX telemetry sensors. RF Tool is used for the additional FC-side operations shown above.
 
+### KSE MSP scheduling during flight
+
+KSE admits new MSP requests only with current safe-ground evidence: disarmed, a stopped governor and zero headspeed. Armed/rotating, stale, missing or contradictory evidence pauses new diagnostics, configuration requests and FC-count reads. The pre-arm blocker banner clears while safe-ground evidence is unavailable; fresh diagnostics and post-flight count updates resume after safe-ground recovery.
+
+Discover and retain `ARM`, `Gov` and `Hspd`. KSE requires EdgeTX's `getSourceValue` to report each sample explicitly current and fresh, plus a live link and ready RF Tool state. Ground evidence must settle for 0.4 seconds before requests resume. Older value-only telemetry APIs remain usable for displays but cannot authorize these MSP requests.
+
+Normal telemetry, Smart Fuel, flight instruments, alerts, local counters and telemetry-driven profile indicators continue. The last confirmed FC count and loaded profile capacities remain available; starting the dashboard airborne may leave FC configuration/count details unavailable until safe ground.
+
+Use the unmodified official RF Tool package. Its own initialization, recovery and page requests continue. A KSE request already active in RF Tool can keep sending fragments or retrying indefinitely after KSE stops admitting work. This policy does not guarantee zero in-flight MSP traffic or cancellation before every send, and it does not claim a measured latency improvement.
+
 ### Top-bar PID/rate-profile indicator
 
 KSE4 and KSE5 show the active PID profile and rate profile together in the top bar:
@@ -138,7 +148,7 @@ This indicator is display-only. It reads normal EdgeTX telemetry and does not ad
 
 Battery profiles are available only in Electric mode. After RF Tool connects, KSE reads the active Rotorflight battery profile and all six configured capacities. The picker lists only profiles with a positive configured capacity; zero-capacity profiles are treated as not configured. If no profiles are configured, the picker reports that instead of offering an invalid choice. If exactly one profile has a positive configured capacity, KSE can select it automatically.
 
-A profile change is permitted only when the model is disarmed, the governor is stopped, and headspeed is zero. KSE writes the requested profile, reads it back from the FC, and saves it to FC memory before displaying it as confirmed.
+KSE checks current disarmed/stopped/zero-headspeed evidence before admitting a profile change and each subsequent read-back/save stage. KSE writes the requested profile, verifies it from the FC, and saves it to FC memory before displaying it as confirmed. Losing safe-ground evidence stops new stages, but an already-active request remains subject to RF Tool's retries as described above.
 
 ### Nitro mode
 
@@ -206,7 +216,7 @@ For this mode:
 
 - Enable model statistics in Rotorflight/RF Tool.
 - Configure the desired Rotorflight minimum armed time.
-- Discover and retain the `ARM` telemetry sensor.
+- Discover and retain the `ARM`, `Gov` and `Hspd` telemetry sensors.
 - Keep the complete `/WIDGETS/RfTool/` and `/SCRIPTS/RF2/` package installed.
 
 The displayed FC total represents Rotorflight-qualified arm/disarm cycles. Multiple qualifying re-arms during one powered session can therefore add multiple flights.

@@ -19,8 +19,13 @@
     if menuAvailable then
       lvgl.menu=function(spec) __mock.menus=__mock.menus+1; __mock.menu=spec end
     end
-    return {profileRfState="disarmed",profileActive=1,profileCapacitiesReady=true,
-            profileCapacities={1000,2000,3000,4000,5000,6000}}
+    local wgt={profileRfState="disarmed",profileActive=1,profileCapacitiesReady=true,
+               profileCapacities={1000,2000,3000,4000,5000,6000}}
+    if api.ground then
+      api.ground(wgt); __mock.now=__mock.now+40
+      assert(api.ground(wgt),"ground fixture did not settle")
+    end
+    return wgt
   end
   local function case(name) print("PICKER|case|"..name) end
   local function bounds(width,height)

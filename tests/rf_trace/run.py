@@ -47,6 +47,8 @@ def main():
                         help="Rotorflight Lua Git checkout containing the pinned commit")
     parser.add_argument("--baseline-dir", required=True, type=Path,
                         help="Baseline tree containing KSE4/main.lua and KSE5/main.lua")
+    parser.add_argument("--candidate-dir", type=Path, default=ROOT,
+                        help="Candidate tree for historical structural comparisons")
     args = parser.parse_args()
     with tempfile.TemporaryDirectory(prefix="kse-rf-trace-") as tmp:
         work = Path(tmp)
@@ -57,7 +59,7 @@ def main():
                 f"{PIN}:src/SCRIPTS/RF2/MSP/{name}.lua"])
             (upstream / (name + ".lua")).write_bytes(content)
         before = capture(args.runner.resolve(), args.baseline_dir, work / "before", upstream)
-        after = capture(args.runner.resolve(), ROOT, work / "after", upstream)
+        after = capture(args.runner.resolve(), args.candidate_dir, work / "after", upstream)
         if before != after:
             raise SystemExit("RF traces changed:\n" + "\n".join(difflib.unified_diff(
                 before, after, fromfile="baseline", tofile="current", lineterm="")))

@@ -14,11 +14,13 @@ def instrument(source: str) -> str:
     if source.count(anchor) != 1:
         raise ValueError("Expected battery profile export anchor not found")
     source = source.replace(anchor, "  picker=showBatteryProfileMenu,\n" + anchor)
+    if "local MspAdmission =" in source:
+        source = source.replace(anchor, "  ground=MspAdmission.ground,\n" + anchor)
     end = source.rfind("\nreturn {")
     if end < 0 or "useLvgl" not in source[end:]:
         raise ValueError("Expected final widget descriptor not found")
     return (HERE.joinpath("mock.lua").read_text() + "\n" + source[:end]
-            + "\n__picker={show=batteryProfiles.picker,G=G,apply=applyOptions,clear=clearFrameCache}\n"
+            + "\n__picker={show=batteryProfiles.picker,ground=batteryProfiles.ground,G=G,apply=applyOptions,clear=clearFrameCache}\n"
             + HERE.joinpath("contracts.lua").read_text())
 
 
