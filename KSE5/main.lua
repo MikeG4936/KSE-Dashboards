@@ -725,6 +725,8 @@ end
 -- numeric id, prefer getSourceValue() current-state reporting, and retain the
 -- legacy getValue() path only as a compatibility fallback. Electric/Nitro use
 -- the Rotorflight contract; OMPHOBBY uses the receiver's smaller contract.
+-- Sensor helpers share one local binding to retain EdgeTX compiler headroom.
+local sensors = {}
 local ROTORFLIGHT_SENSOR = {
   headspeed        = "Hspd",
   tailHeadspeed    = "Tspd",
@@ -754,13 +756,13 @@ local OMPHOBBY_SENSOR = {
   batteryPercent   = "Bat%",
   escTemperature   = "Temp",
 }
-local function activeSensorName(key)
+function sensors.activeSensorName(key)
   local sensors = OPT.heliType == HELI_OMPHOBBY
                   and OMPHOBBY_SENSOR or ROTORFLIGHT_SENSOR
   return sensors[key]
 end
-local function getSensorNumber(key)
-  local name = activeSensorName(key)
+function sensors.getSensorNumber(key)
+  local name = sensors.activeSensorName(key)
   if not name then return nil end
   local v, current, fresh, exists = get(name)
   return tonumber(v), current, fresh, exists
@@ -770,7 +772,7 @@ end
 local NAMES = {
   lq = { "RQly", "RQLY", "LQ" },
 }
-local function resolveNamed(key)
+function sensors.resolveNamed(key)
   local names = NAMES[key]
   local cached = RESOLVED[key]
   if cached then
@@ -791,7 +793,7 @@ local function resolveNamed(key)
   end
   return nil
 end
-local function getCellCount()
+function sensors.getCellCount()
   local v = F.cellCount
   if v ~= nil then return v end
   if OPT.heliType == HELI_OMPHOBBY then
@@ -810,7 +812,7 @@ local function getCellCount()
       v = 0
     end
   else
-    v = getSensorNumber("cellCount") or 0
+    v = sensors.getSensorNumber("cellCount") or 0
   end
   v = math.floor(v + 0.5)
   D.cellCountValid = v >= 1 and v <= SAFETY.maxCellCount
@@ -818,25 +820,25 @@ local function getCellCount()
   F.cellCount = v
   return v
 end
-local function getPackVolt()
+function sensors.getPackVolt()
   local v = F.packVolt
   if v ~= nil then return v end
-  v = getSensorNumber("packVoltage")
+  v = sensors.getSensorNumber("packVoltage")
   D.packVoltageValid = v ~= nil and v > 0
                        and v <= SAFETY.maxCellCount * SAFETY.maxCellSanityV
   if not D.packVoltageValid then v = 0 end
   F.packVolt = v
   return v
 end
-local function getCellVoltage()
+function sensors.getCellVoltage()
   local v = F.cellVoltage
   if v ~= nil then return v end
   if OPT.heliType == HELI_OMPHOBBY then
-    local cells = getCellCount()
-    local packVoltage = getPackVolt()
+    local cells = sensors.getCellCount()
+    local packVoltage = sensors.getPackVolt()
     v = cells > 0 and packVoltage > 0 and packVoltage / cells or nil
   else
-    v = getSensorNumber("cellVoltage")
+    v = sensors.getSensorNumber("cellVoltage")
   end
   D.cellVoltageValid = v ~= nil and v > 0
                        and v <= SAFETY.maxCellSanityV
@@ -844,66 +846,66 @@ local function getCellVoltage()
   F.cellVoltage = v
   return v
 end
-local function getBatPct()
+function sensors.getBatPct()
   local v = F.batPct
   if v ~= nil then return v end
-  v = getSensorNumber("batteryPercent")
+  v = sensors.getSensorNumber("batteryPercent")
   D.batteryPercentValid = v ~= nil and v >= 0 and v <= 100
   if not D.batteryPercentValid then v = false end
   F.batPct = v
   return v
 end
-local function getCapa()
+function sensors.getCapa()
   local v = F.capa
   if v ~= nil then return v end
-  v = getSensorNumber("capacity")
+  v = sensors.getSensorNumber("capacity")
   D.capacityValid = v ~= nil and v >= 0 and v <= 100000
   if not D.capacityValid then v = 0 end
   F.capa = v
   return v
 end
-local function getCurr()
+function sensors.getCurr()
   local v = F.curr
   if v ~= nil then return v end
-  v = getSensorNumber("current")
+  v = sensors.getSensorNumber("current")
   local sane = v ~= nil and v >= -500 and v <= 1000
   if not sane then v = 0 end
   D.currentValid = sane
   F.curr = v
   return v
 end
-local function getTemp()
+function sensors.getTemp()
   local v = F.temp
   if v ~= nil then return v end
-  v = getSensorNumber("escTemperature")
+  v = sensors.getSensorNumber("escTemperature")
   local sane = v ~= nil and v >= -40 and v <= 250
   if not sane then v = 0 end
   D.tempValid = sane
   F.temp = v
   return v
 end
-local function getBec()
+function sensors.getBec()
   local v = F.bec
   if v ~= nil then return v end
-  v = getSensorNumber("becVoltage")
+  v = sensors.getSensorNumber("becVoltage")
   local sane = v ~= nil and v > 0 and v <= 30
   D.becValid = sane
   if not D.becValid then v = 0 end
   F.bec = v
   return v
 end
-local function getRxBatt()
+function sensors.getRxBatt()
   local v = F.rxBatt
   if v ~= nil then return v end
   -- Nitro Rx pack voltage uses the same Vbec resolver as the BEC tile.
-  v = getBec()
+  v = sensors.getBec()
   F.rxBatt = v
   return v
 end
-local function getBattProfile()
+function sensors.getBattProfile()
   local v = F.battProfile
   if v ~= nil then return v end
-  v = getSensorNumber("batteryProfile")
+  v = sensors.getSensorNumber("batteryProfile")
   local whole = v ~= nil and math.floor(v) or nil
   if whole == nil or v ~= whole
      or whole < 1 or whole > BATTERY_PROFILE_COUNT then
@@ -926,27 +928,27 @@ local function getBattProfile()
   F.battProfile = v
   return v
 end
-local function getHeadspeed()
+function sensors.getHeadspeed()
   local v = F.rpm
   if v ~= nil then return v end
-  v = getSensorNumber("headspeed")
+  v = sensors.getSensorNumber("headspeed")
   local sane = v ~= nil and v >= 0 and v <= 100000
   if not sane then v = 0 end
   D.rpmValid = sane
   F.rpm = v
   return v
 end
-local function getTailRpm()
+function sensors.getTailRpm()
   local v = F.trpm
   if v ~= nil then return v end
-  v = getSensorNumber("tailHeadspeed")
+  v = sensors.getSensorNumber("tailHeadspeed")
   local sane = v ~= nil and v >= 0 and v <= 100000
   if not sane then v = 0 end
   D.tailRpmValid = sane
   F.trpm = v
   return v
 end
-local function getGovernorMode()
+function sensors.getGovernorMode()
   local cached = F.govNumber
   if cached ~= nil then return cached ~= false and cached or nil end
   if OPT.heliType == HELI_OMPHOBBY then
@@ -955,7 +957,7 @@ local function getGovernorMode()
     F.govNumber = false
     return nil
   end
-  local raw, current = getSensorNumber("governorMode")
+  local raw, current = sensors.getSensorNumber("governorMode")
   local whole = raw ~= nil and math.floor(raw) or nil
   local valid = whole ~= nil and raw == whole and GOV_STATES[whole] ~= nil
   D.govValid = valid
@@ -965,19 +967,19 @@ local function getGovernorMode()
   F.govNumber = valid and whole or false
   return valid and whole or nil
 end
-local function getGovState()
+function sensors.getGovState()
   local v = F.gov
   if v ~= nil then return v end
   if OPT.heliType == HELI_OMPHOBBY then
     v = "--"
   else
-    local g = getGovernorMode()
+    local g = sensors.getGovernorMode()
     v = g == nil and "--" or GOV_STATES[g]
   end
   F.gov = v
   return v
 end
-local function getTxVolt()
+function sensors.getTxVolt()
   local v = F.txVolt
   if v ~= nil then return v end
   -- Capture only the source value. get() also returns current/fresh/existence
@@ -996,7 +998,7 @@ local TX_LIPO_FULL_V  = 8.4   -- 4.20 V/cell
 local TX_LIION_EMPTY_V = 6.2  -- 3.10 V/cell
 local TX_LIION_FULL_V  = 8.4  -- 4.20 V/cell
 
-local function txPctFromVolts(volts, isLiIon)
+function sensors.txPctFromVolts(volts, isLiIon)
   if not volts or volts <= 0 then return nil end
   local emptyV = isLiIon and TX_LIION_EMPTY_V or TX_LIPO_EMPTY_V
   local fullV = isLiIon and TX_LIION_FULL_V or TX_LIPO_FULL_V
@@ -1005,7 +1007,7 @@ local function txPctFromVolts(volts, isLiIon)
   if pct > 100 then pct = 100 end
   return pct
 end
-local function signalPercent(raw)
+function sensors.signalPercent(raw)
   local v = tonumber(raw)
   if v == nil then return nil end
   local pct
@@ -1022,11 +1024,11 @@ local function signalPercent(raw)
   if pct > 100 then pct = 100 end
   return pct
 end
-local function getRqly()
+function sensors.getRqly()
   local v = F.rqly
   if v ~= nil then return v end
   A.linkSourceKnown = false
-  v = resolveNamed("lq")
+  v = sensors.resolveNamed("lq")
   if v == nil then
     local rssi
     if getRSSI then
@@ -1039,15 +1041,15 @@ local function getRqly()
       if exists then A.linkSourceKnown = true end
       if raw ~= nil then rssi = tonumber(raw) end
     end
-    v = signalPercent(rssi)
+    v = sensors.signalPercent(rssi)
   end
   v = tonumber(v) or 0
-  if v < 0 or v > 100 then v = signalPercent(v) or 0 end
+  if v < 0 or v > 100 then v = sensors.signalPercent(v) or 0 end
   if v > 0 then A.linkSourceSeen = true end
   F.rqly = v
   return v
 end
-local function percentFromCellVoltage(cellVolts, isLiHV)
+function sensors.percentFromCellVoltage(cellVolts, isLiHV)
   if not cellVolts or cellVolts <= 0 then return 0 end
   local minV = 3.3
   local maxV = isLiHV and 4.35 or 4.2
@@ -1061,7 +1063,7 @@ end
 -- Bat% is sufficient evidence by itself; a zero also needs live Vcel or Vbat
 -- so an FC powered over USB without a flight pack is shown as NO DATA instead
 -- of an empty battery. OMPHOBBY keeps its stricter RxBt + M1/M2 contract.
-local function selectFlightBatteryPercent(heliType, sensorPercent, sensorValid,
+function sensors.selectFlightBatteryPercent(heliType, sensorPercent, sensorValid,
                                           voltagePercent, hasCellVoltage,
                                           hasPackVoltage)
   local raw = tonumber(sensorPercent)
@@ -1080,7 +1082,7 @@ local function selectFlightBatteryPercent(heliType, sensorPercent, sensorValid,
   if voltagePercent ~= nil then return voltagePercent, true, "voltage" end
   return 0, false, nil
 end
-local function calculateAdjustedPercent(actual, reserve)
+function sensors.calculateAdjustedPercent(actual, reserve)
   if not actual or actual <= 0 then return 0 end
   reserve = reserve or 0
   if reserve >= 100 then return 0 end
@@ -1483,7 +1485,7 @@ local updateMotorAlertGate
 local function tick(nowT)
   nowT = nowT or frameNow()
   A.lastDataTick = nowT
-  local rq = getRqly()
+  local rq = sensors.getRqly()
   local linkReported = rq and rq > 0 or false
   A.linkAvailable = false
   -- Read the whole physical Motor Switch as a raw source (-1024/0/+1024 for a
@@ -1512,16 +1514,16 @@ local function tick(nowT)
   else
     A.motorSwitchPosition = 0
   end
-  local volt  = getPackVolt()
-  local cells = getCellCount()
-  local pctSensor = getBatPct()
-  local capa  = getCapa()
-  getCurr()
-  local escT  = getTemp()
-  local becV  = getBec()
-  local cellVoltage = getCellVoltage()
-  local headRpm = getHeadspeed()
-  local governorMode = getGovernorMode()
+  local volt  = sensors.getPackVolt()
+  local cells = sensors.getCellCount()
+  local pctSensor = sensors.getBatPct()
+  local capa  = sensors.getCapa()
+  sensors.getCurr()
+  local escT  = sensors.getTemp()
+  local becV  = sensors.getBec()
+  local cellVoltage = sensors.getCellVoltage()
+  local headRpm = sensors.getHeadspeed()
+  local governorMode = sensors.getGovernorMode()
   local hasCellVoltage = D.cellVoltageValid and cellVoltage > 0
   local telemetryEvidence = hasCellVoltage or D.batteryPercentValid
                             or D.capacityValid or D.currentValid
@@ -1559,14 +1561,14 @@ local function tick(nowT)
     end
   end
   local voltagePct = hasCellVoltage
-                     and percentFromCellVoltage(cellVoltage, D.isLiHV) or nil
+                     and sensors.percentFromCellVoltage(cellVoltage, D.isLiHV) or nil
   local hasPackVoltage = D.packVoltageValid and volt > 0
-  local pct, hasPct, pctSource = selectFlightBatteryPercent(
+  local pct, hasPct, pctSource = sensors.selectFlightBatteryPercent(
     OPT.heliType, pctSensor, D.batteryPercentValid, voltagePct,
     hasCellVoltage, hasPackVoltage)
   local hadPct = D.hasBattData
   D.hasBattData = hasPct
-  D.adjustedPercent = calculateAdjustedPercent(pct, OPT.reservePct)
+  D.adjustedPercent = sensors.calculateAdjustedPercent(pct, OPT.reservePct)
   if not hasPct then
     A.displayPercent = 0
     A.displayPercentInit = false
@@ -1602,7 +1604,7 @@ local function tick(nowT)
   end
   updateEscBecAlerts(escT, D.tempValid, becV, D.becValid)
   if OPT.battBarMode == 1 then
-    local rx = getRxBatt()
+    local rx = sensors.getRxBatt()
     updateRxPackAlert(rx)
     BATTERY_VOICE.updateRxDead(voiceEnabled, rx)
     if D.becValid and rx and rx > 0 then
@@ -2113,17 +2115,17 @@ local function tickFlightCount()
 end
 local function updateStats()
   if not A.linkAvailable then return end
-  local r = getHeadspeed()
+  local r = sensors.getHeadspeed()
   if D.rpmValid and r > 0 then
     if r > S.rpmMax then S.rpmMax = r end
   end
-  local c = getCurr()
+  local c = sensors.getCurr()
   if D.currentValid and c > S.currMax then S.currMax = c end
-  local t = getTemp()
+  local t = sensors.getTemp()
   if D.tempValid and t > S.tempMax then S.tempMax = t end
-  local b = getBec()
+  local b = sensors.getBec()
   if D.becValid and (S.becMin == nil or b < S.becMin) then S.becMin = b end
-  local mc = getCellVoltage()
+  local mc = sensors.getCellVoltage()
   if mc and mc > 0 and (S.cellMin == nil or mc < S.cellMin) then S.cellMin = mc end
 end
 
@@ -2154,7 +2156,7 @@ local function applySimulatedTelemetry(now)
   local current = motorRunning and round(15 + wave * 235) or 0
   local temp = round(32 + phase * 68)
   local rawPercent = 96 - phase * 74
-  local adjustedPercent = calculateAdjustedPercent(rawPercent, OPT.reservePct)
+  local adjustedPercent = sensors.calculateAdjustedPercent(rawPercent, OPT.reservePct)
   local cells = OPT.heliType == HELI_OMPHOBBY and 3 or 12
   local cell = 4.18 - phase * 0.56
   local pack = cell * cells
@@ -2731,7 +2733,7 @@ local function updateTopBar(wgt)
   setLabel(wgt, ui.modelName, modelName, C_TEXT)
   setLabel(wgt, ui.timer, formatTimer(getTimer1Secs()), C_TEXT)
 
-  local rq = getRqly()
+  local rq = sensors.getRqly()
   local bars = rq >= 80 and 4 or rq >= 60 and 3
                or rq >= 40 and 2 or rq >= 20 and 1 or 0
   local signalColor = bars >= 3 and C_GREEN
@@ -2740,8 +2742,8 @@ local function updateTopBar(wgt)
     setObject(wgt, bar, { color=i <= bars and signalColor or C_BORDER })
   end
 
-  local pidProfile = getSensorNumber("pidProfile")
-  local rateProfile = getSensorNumber("rateProfile")
+  local pidProfile = sensors.getSensorNumber("pidProfile")
+  local rateProfile = sensors.getSensorNumber("rateProfile")
   pidProfile = tonumber(pidProfile)
   rateProfile = tonumber(rateProfile)
   if not pidProfile or pidProfile ~= math.floor(pidProfile)
@@ -2762,7 +2764,7 @@ local function updateTopBar(wgt)
     profilesReady and string.format("Profile %d / Rate %d",
       pidProfile, rateProfile) or "", C_TEXT)
 
-  local txPct = txPctFromVolts(getTxVolt(), txIsLiIon)
+  local txPct = sensors.txPctFromVolts(sensors.getTxVolt(), txIsLiIon)
   if txPct then
     local innerH = ui.txBodyH - ui.txInset * 2
     local fillH = math.max(1, math.floor(innerH * clamp(txPct, 0, 100) / 100))
@@ -2805,11 +2807,11 @@ local function batteryFooter()
     if not OPT.rxPackValid then return "INVALID RX RANGE" end
     return D.rxVoltage and string.format("RX %.2fV", D.rxVoltage) or "NO TELEMETRY"
   end
-  if OPT.heliType == HELI_OMPHOBBY and getCellCount() == 0 then
+  if OPT.heliType == HELI_OMPHOBBY and sensors.getCellCount() == 0 then
     return "ADD M1/M2 NAME"
   end
   local parts = {}
-  local profile = getBattProfile()
+  local profile = sensors.getBattProfile()
   if OPT.heliType == HELI_ELECTRIC and profile and profile > 0 then
     parts[#parts+1] = "P" .. tostring(math.floor(profile))
   end
@@ -2825,7 +2827,7 @@ local function batteryInvalidMessage()
   if OPT.heliType == HELI_NITRO and not OPT.rxPackValid then
     return "CHECK RX RANGE"
   end
-  if OPT.heliType == HELI_OMPHOBBY and getCellCount() == 0 then
+  if OPT.heliType == HELI_OMPHOBBY and sensors.getCellCount() == 0 then
     return "ADD M1/M2 NAME"
   end
   return A.linkAvailable and "NO BATTERY DATA" or ""
@@ -2845,14 +2847,14 @@ local function updateRings(wgt)
     batteryColor(batteryPct), batteryValid, C_DIM,
     batteryInvalidMessage())
 
-  local rpm = getHeadspeed()
+  local rpm = sensors.getHeadspeed()
   updateRing(wgt, 2, tostring(math.floor(rpm or 0)), "RPM",
     string.format("MAX %d", math.floor(statRpmMax())),
     ((rpm or 0) - RING_STANDARD.rpmMin)
       / (RING_STANDARD.rpmMax - RING_STANDARD.rpmMin),
     C_ACCENT, D.rpmValid, C_YELLOW)
 
-  local curr = getCurr()
+  local curr = sensors.getCurr()
   local currentValid = OPT.heliType ~= HELI_NITRO and D.currentValid
   updateRing(wgt, 3, tostring(math.ceil(curr or 0)), "AMPS",
     string.format("MAX %dA", math.ceil(statCurrMax())),
@@ -2861,7 +2863,7 @@ local function updateRings(wgt)
     C_BLUE, currentValid, C_YELLOW,
     OPT.heliType == HELI_NITRO and "NOT USED" or nil)
 
-  local temp = getTemp()
+  local temp = sensors.getTemp()
   local tempValid = OPT.heliType ~= HELI_NITRO and D.tempValid
   updateRing(wgt, 4, tostring(math.floor(temp or 0)), "\xC2\xB0C",
     string.format("MAX %d\xC2\xB0C", math.floor(statTempMax())),
@@ -2909,13 +2911,13 @@ local function updateLowerDashboard(wgt)
   setLabel(wgt, ui.flightCount, flightText,
            flightColor)
 
-  local govState = getGovState()
+  local govState = sensors.getGovState()
   local govValid = OPT.heliType ~= HELI_OMPHOBBY and D.govValid
   updateTile(wgt, 1, govState, "",
     GOV_COLOR[govState] or GOV_FALLBACK, govValid,
     GOV_COLOR[govState] or GOV_FALLBACK)
 
-  local bec = getBec()
+  local bec = sensors.getBec()
   local becValid = OPT.heliType ~= HELI_OMPHOBBY and D.becValid
   local becFooter = statBecMin() and string.format("LOW %.1fV", statBecMin()) or ""
   setLabel(wgt, ui.tiles[2].label,
@@ -2929,7 +2931,7 @@ local function updateLowerDashboard(wgt)
     cellMin = D.minRxVoltage and D.minRxVoltage / 2 or nil
     cellValid = cell ~= nil and cell > 0
   else
-    cell = getCellVoltage()
+    cell = sensors.getCellVoltage()
     cellMin = statCellMin()
     cellValid = D.cellVoltageValid
   end
@@ -4384,11 +4386,11 @@ local function profileSwitchUnsafe(wgt)
   if armCurrent == true and arm ~= nil and math.floor(arm) % 2 == 1 then
     return true, "DISARM TO CHANGE PROFILE"
   end
-  local governorMode = getGovernorMode()
+  local governorMode = sensors.getGovernorMode()
   if governorMode ~= nil and GOV_RUNNING_STATE[governorMode] then
     return true, "STOP GOVERNOR TO CHANGE PROFILE"
   end
-  local headspeed = getHeadspeed()
+  local headspeed = sensors.getHeadspeed()
   if D.rpmValid and headspeed >= 1 then
     return true, "STOP ROTOR TO CHANGE PROFILE"
   end
@@ -4976,7 +4978,7 @@ local function serviceBatteryProfileFeature(wgt, allowUi, event, touchState)
       profileSetMessage(wgt, "READING PROFILE CAPACITIES...", C_YELLOW)
     end
 
-    local telemetryProfile = getBattProfile()
+    local telemetryProfile = sensors.getBattProfile()
     if telemetryProfile and telemetryProfile ~= wgt.profileActive
        and not wgt.profileBusy then
       wgt.profileActive = telemetryProfile
