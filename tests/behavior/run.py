@@ -12,7 +12,7 @@ SENSORS = """activeSensorName getSensorNumber resolveNamed getCellCount getPackV
 getCellVoltage getBatPct getCapa getCurr getTemp getBec getRxBatt getBattProfile
 getHeadspeed getTailRpm getGovernorMode getGovState getTxVolt txPctFromVolts
 signalPercent getRqly percentFromCellVoltage selectFlightBatteryPercent
-calculateAdjustedPercent""".split()
+calculateAdjustedPercent profileIndexValid profilePair flightStatusPending""".split()
 FUNCTIONS = """clearFrameCache applyOptions tick resetSessionEvidence
 resetSessionStats updateBatteryAlertState resetBatteryAlertState
 updateBatteryHapticTick updateEscBecAlerts updateRxPackAlert tickFlightCount

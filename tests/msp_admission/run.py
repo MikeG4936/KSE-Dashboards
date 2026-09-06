@@ -16,6 +16,7 @@ def instrument(source):
     if source.count(marker) != 1:
         raise ValueError("Cannot locate profile-controller export boundary")
     exports = """
+  byte=profileReadByte,
   admission=MspAdmission,
   begin=profileBeginOperation,
   status=profileBeginArmingStatus,

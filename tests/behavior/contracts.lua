@@ -424,6 +424,16 @@ __runContracts=function()
   local defaultDuration,defaultMotor=t.config()
   check("nil options resets minimum duration",defaultDuration,20)
   check("nil options resets motor source",defaultMotor,99)
+  check("profile whole lower valid",t.profileIndexValid(1),true)
+  check("profile whole upper valid",t.profileIndexValid(6),true)
+  check("fractional profile rejected on EdgeTX",t.profileIndexValid(1.5),false)
+  check("profile zero rejected",t.profileIndexValid(0),false)
+  check("profile overflow rejected",t.profileIndexValid(7),false)
+  check("profile string rejected",t.profileIndexValid("1"),false)
+  t.FC.status="INITIALIZING"
+  check("initializing status is pending",t.flightStatusPending(),true)
+  t.FC.status="NO REPLY"
+  check("failure status is not pending",t.flightStatusPending(),false)
   check("complete",true,true)
 end
 __runContracts()

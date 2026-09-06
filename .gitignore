@@ -57,6 +57,12 @@
 /src/shared/*
 !/src/shared/count_storage.lua
 !/src/shared/msp_admission.lua
+!/src/shared/widget_owner.lua
+!/tests/ownership/
+/tests/ownership/*
+!/tests/ownership/*.py
+!/tests/ownership/*.lua
+!/tests/ownership/README.md
 !/tests/msp_admission/
 /tests/msp_admission/*
 !/tests/msp_admission/*.py
@@ -97,9 +103,27 @@
 /theme-gallery/assets/*
 !/theme-gallery/assets/*.png
 
-!/src/shared/widget_owner.lua
-!/tests/ownership/
-/tests/ownership/*
-!/tests/ownership/*.py
-!/tests/ownership/*.lua
-!/tests/ownership/README.md
+# Authored engine and renderer inputs for deterministic standalone assembly.
+!/src/shared/enums.lua
+!/src/shared/state.lua
+!/src/shared/options.lua
+!/src/shared/telemetry.lua
+!/src/shared/alerts.lua
+!/src/shared/counters.lua
+!/src/shared/images.lua
+!/src/shared/rf.lua
+!/src/shared/lifecycle.lua
+!/src/README.md
+!/src/variants/
+/src/variants/*
+!/src/variants/KSE4/
+!/src/variants/KSE5/
+/src/variants/KSE4/*
+/src/variants/KSE5/*
+!/src/variants/KSE4/*.lua
+!/src/variants/KSE5/*.lua
+!/tests/render/
+/tests/render/*
+!/tests/render/*.py
+!/tests/render/*.lua
+!/tests/render/README.md

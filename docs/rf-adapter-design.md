@@ -74,13 +74,15 @@ The stopped-governor/zero-headspeed policy in this historical alternative was su
 - Keep host heartbeat, ARM tracking, receive-side telemetry and official initialization/recovery servicing active. In-flight suppression applies only to KSE owned messages.
 - Clear stale arming-blocker banner when leaving safe ground; retain last confirmed FC count and telemetry-driven indicators; resume diagnostics and post-flight reads after stable safe-ground recovery.
 
-## Applicable lifecycle work under the accepted boundary
+## Implemented lifecycle boundary
 
-- Move Nitro/Electric operation deadline checks into common service and align reset entry points.
-- Record model/provider/owner generations and invalidate callback side effects on every reset/replacement.
-- Filter not-yet-current owned queue entries by identity without altering a foreign current transaction.
-- Leave unresolved active transactions in RF Tool's queue with their callbacks invalidated; KSE deadlines release local bookkeeping only. Preserve message identity for attribution and test the accepted continuing retry behavior. Clearing local operation state does not cancel transport work.
-- Add duplicate ownership checks before `create`/`update` mutates shared module options/state. Weak references alone are insufficient if RF Tool's widget registration strongly retains callbacks. A lease/epoch design must recheck ownership at every callback and provide delayed recreation takeover without a permanent global lock. RF work already active across takeover remains subject to upstream retries; duplicate UI/state guarding does not stop that traffic.
+The shared controller in [rf.lua](../src/shared/rf.lua) services a host only when KSE explicitly recorded creating it. For an embedded host, a ready queue receives one processing call followed by `background(host, true)` even during pending requests or queue failure. External RF Tool widgets run their own queue/background callbacks. This follows the pinned [RF Tool callback order](https://github.com/rotorflight/rotorflight-lua-scripts/blob/aaacfe68407c09d49a26c5aa326c00119b378bb0/src/WIDGETS/RfTool/app.lua#L281-L351); `true` suppresses the private RF page UI runner under KSE's UI context. It does not repair the mixed-frame decoder limitation described above.
+
+[Widget ownership](../src/shared/widget_owner.lua) admits one KSE engine across both variants. Normal callbacks renew a 500-tick lease; only foreground refresh can replace an expired existing owner. One forwarding registration proxy per provider routes state to the current owner without registering every obsolete widget. Host transfer requires the recorded provider and host identity to remain current.
+
+Takeover preserves the shared dirty count cache, retires pending owned work, and recreates instance state while retaining monotonic operation tokens. Picker callbacks additionally capture the owner epoch. Background resets defer UI cleanup until foreground service. Active upstream transactions and foreign queue entries retain their original behavior; local deadlines and stale callbacks do not cancel them.
+
+The [ownership](../tests/ownership/README.md) and [MSP admission](../tests/msp_admission/README.md) contracts exercise these software boundaries. Real-radio FIFO continuity, memory retention and RF timing remain unverified.
 
 ## Acceptance probes for the selected policy
 

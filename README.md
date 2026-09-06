@@ -350,13 +350,15 @@ Special thanks to Victor Malpica, Colin Bell, Martin Rottmair, and Tim Yantes fo
 
 ## Source and updates
 
-KSE4 and KSE5 are maintained together so functional and safety changes can be applied to both variants. The repository publishes readable Lua source rather than a precompiled radio-specific artifact.
+KSE4 and KSE5 are generated from one shared functional engine with separate renderers. Each deployed `main.lua` contains everything its dashboard needs; installing one dashboard does not load another KSE script. Development changes belong under `src/shared` or `src/variants`; see the [source and assembly guide](src/README.md). The repository publishes readable Lua source rather than precompiled radio-specific artifacts.
 
 ### Validation and remaining work
 
-The automated checks use the EdgeTX 2.12.1 Lua core and pinned Rotorflight queue/API code with mocked radio services. They cover ARM-only request admission, profile staging, cross-dashboard behavior, count-file recovery, picker geometry and image bounds. See the [MSP tests](tests/msp_admission/README.md) and [compiler tooling](tools/edgetx/README.md) for reproducible checks. Real-radio SD durability, rendering, memory, timing and RF performance remain unverified.
+The automated checks use the EdgeTX 2.12.1 Lua core and pinned Rotorflight queue/API code with mocked radio services. They cover request admission, profile staging, duplicate ownership and takeover, count-file recovery, sensor identity/freshness, option/mode handling, functional parity, picker geometry and image bounds. Actual render functions also run through all 22 themes, three helicopter modes and three target resolutions. See the [source guide](src/README.md) for reproducible checks.
 
-The broader [optimization plan](docs/implementation-plan.md) is not fully complete. Remaining software work includes full shared-engine extraction and dead-code cleanup; the [RF integration assessment](docs/rf-adapter-design.md) records the upstream receive/transport constraints. These are separate from the accepted limitation that an already-active RF Tool request can continue retrying after KSE stops admitting work.
+The five software follow-ups are complete: duplicate protection, full shared-engine assembly, sensor-cache cleanup, OMP counter handling, and RF background/lifecycle improvements. Verified dead RF callbacks and the inaccessible synthetic display loop have been removed. ARM-only MSP admission and the accepted active-request retry limitation are unchanged.
+
+Final completion of the [optimization plan](docs/implementation-plan.md) still requires transmitter validation: actual SD durability, haptics/voice, visual layout and picker operation, memory retention through repeated lifecycle changes, callback timing, and attributed RF traffic on the supported radios. No control-latency improvement is claimed without measurement. The [RF integration assessment](docs/rf-adapter-design.md) documents the remaining upstream receive/transport limitations.
 
 ## Disclaimer
 

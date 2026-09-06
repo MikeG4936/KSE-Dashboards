@@ -141,6 +141,11 @@ for _,gate in ipairs(gates) do
 end
 
 local a,w,q=setup()
+eq("MSP byte accepts lower bound",a.profiles.byte({0},1),0)
+eq("MSP byte accepts upper bound",a.profiles.byte({255},1),255)
+eq("MSP byte rejects fraction on EdgeTX",a.profiles.byte({1.5},1),nil)
+eq("MSP byte rejects overflow",a.profiles.byte({256},1),nil)
+eq("MSP byte rejects missing",a.profiles.byte({},1),nil)
 eq("fresh disarmed ARM admits immediately",a.profiles.admission.disarmed(w),true)
 eq("admission has no artificial time advance",env.now,1000)
 eq("picker uses same disarmed state",a.profiles.unsafe(w),false)
