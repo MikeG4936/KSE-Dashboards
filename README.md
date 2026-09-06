@@ -103,7 +103,7 @@ With the motor disconnected or otherwise physically unable to start, verify:
 - The selected Motor Switch is the actual physical switch.
 - Battery warnings and haptics behave as expected.
 - The top bar shows the active PID and rate profiles while connected and clears them after disconnect.
-- Electric battery-profile changes are blocked while armed, while the governor is running, or while headspeed is present.
+- Electric battery-profile changes are blocked while armed or when current, fresh disarmed ARM evidence is unavailable. Governor state and headspeed do not block MSP requests when disarm is confirmed.
 - The selected flight counter updates according to its documented behavior.
 - Confirm that Timer1 is setup with the motor switch - this is configured in EdgeTX completely separate from KSE Dashboard.
 
@@ -121,11 +121,11 @@ Normal dashboard telemetry comes directly from EdgeTX telemetry sensors. RF Tool
 
 ### KSE MSP scheduling during flight
 
-KSE admits new MSP requests only with current safe-ground evidence: disarmed, a stopped governor and zero headspeed. Armed/rotating, stale, missing or contradictory evidence pauses new diagnostics, configuration requests and FC-count reads. The pre-arm blocker banner clears while safe-ground evidence is unavailable; fresh diagnostics and post-flight count updates resume after safe-ground recovery.
+All new KSE MSP requests require confirmed disarm: valid, current and fresh `ARM` bit 0 must indicate disarmed, the link must be live, RF Tool must be ready, and its host state must not report armed. Armed, stale, missing or contradictory evidence pauses new diagnostics, configuration requests and FC-count reads. The pre-arm blocker banner clears when disarm cannot be confirmed; fresh diagnostics and post-flight count updates resume after confirmation returns.
 
-Discover and retain `ARM`, `Gov` and `Hspd`. KSE requires EdgeTX's `getSourceValue` to report each sample explicitly current and fresh, plus a live link and ready RF Tool state. Ground evidence must settle for 0.4 seconds before requests resume. Older value-only telemetry APIs remain usable for displays but cannot authorize these MSP requests.
+Discover and retain `ARM`. KSE requires EdgeTX's `getSourceValue` to report that sample explicitly current and fresh. Governor state and headspeed are not sampled for MSP admission: rotation does not block a request when disarm is confirmed. There is no extra 0.4-second settle wait. The existing FC-count post-disarm wait of 150 ticks (1.5 seconds) and connection/rate intervals still apply. Older value-only telemetry APIs remain usable for displays but cannot authorize these MSP requests.
 
-Normal telemetry, Smart Fuel, flight instruments, alerts, local counters and telemetry-driven profile indicators continue. The last confirmed FC count and loaded profile capacities remain available; starting the dashboard airborne may leave FC configuration/count details unavailable until safe ground.
+Normal telemetry, Smart Fuel, flight instruments, alerts, local counters and telemetry-driven profile indicators continue. The last confirmed FC count and loaded profile capacities remain available; starting the dashboard while armed or without valid ARM telemetry may leave FC configuration/count details unavailable until disarm is confirmed.
 
 Use the unmodified official RF Tool package. Its own initialization, recovery and page requests continue. A KSE request already active in RF Tool can keep sending fragments or retrying indefinitely after KSE stops admitting work. This policy does not guarantee zero in-flight MSP traffic or cancellation before every send, and it does not claim a measured latency improvement.
 
@@ -146,9 +146,9 @@ This indicator is display-only. It reads normal EdgeTX telemetry and does not ad
 
 ### Electric battery profiles
 
-Battery profiles are available only in Electric mode. After RF Tool connects, KSE reads the active Rotorflight battery profile and all six configured capacities. The picker lists only profiles with a positive configured capacity; zero-capacity profiles are treated as not configured. If no profiles are configured, the picker reports that instead of offering an invalid choice. If exactly one profile has a positive configured capacity, KSE can select it automatically.
+Battery profiles are available only in Electric mode. After RF Tool connects and disarm is confirmed, KSE reads the active Rotorflight battery profile and all six configured capacities. The picker lists only profiles with a positive configured capacity; zero-capacity profiles are treated as not configured. If no profiles are configured, the picker reports that instead of offering an invalid choice. If exactly one profile has a positive configured capacity, KSE can select it automatically.
 
-KSE checks current disarmed/stopped/zero-headspeed evidence before admitting a profile change and each subsequent read-back/save stage. KSE writes the requested profile, verifies it from the FC, and saves it to FC memory before displaying it as confirmed. Losing safe-ground evidence stops new stages, but an already-active request remains subject to RF Tool's retries as described above.
+KSE checks confirmed-disarm evidence before admitting a profile change and each subsequent read-back/save stage. KSE writes the requested profile, verifies it from the FC, and saves it to FC memory before displaying it as confirmed. Losing confirmed-disarm evidence stops new stages, but an already-active request remains subject to RF Tool's retries as described above.
 
 ### Nitro mode
 
@@ -216,7 +216,7 @@ For this mode:
 
 - Enable model statistics in Rotorflight/RF Tool.
 - Configure the desired Rotorflight minimum armed time.
-- Discover and retain the `ARM`, `Gov` and `Hspd` telemetry sensors.
+- Discover and retain the `ARM` telemetry sensor.
 - Keep the complete `/WIDGETS/RfTool/` and `/SCRIPTS/RF2/` package installed.
 
 The displayed FC total represents Rotorflight-qualified arm/disarm cycles. Multiple qualifying re-arms during one powered session can therefore add multiple flights.
@@ -249,7 +249,7 @@ After the controller saves and reconnects, return to the model's Telemetry page 
 
 | Sensor | Purpose |
 | --- | --- |
-| `Hspd` | Main headspeed, maximum headspeed, and Electric stopped-rotor proof. |
+| `Hspd` | Main headspeed, maximum headspeed, and Electric motor-alert stopped-rotor proof. |
 | `Tspd` | Tail-rotor speed display. |
 | `Vbec` | Electric BEC voltage or Nitro receiver-pack voltage. Nitro battery percentage and warnings use this sensor. |
 | `Vcel` | Electric cell voltage and minimum-cell tracking. |
@@ -313,8 +313,8 @@ The filename must be exactly `default.png`; leaving the alternate image named `d
 | Widget does not appear | Confirm the exact `/WIDGETS/KSE4/main.lua` or `/WIDGETS/KSE5/main.lua` path, then restart EdgeTX. |
 | Old behavior remains | Delete any stale `main.luac` from the KSE folder and restart the radio. |
 | `INSTALL RF TOOL` or no RF connection | Confirm `/WIDGETS/RfTool/app.lua`, `/WIDGETS/RfStats/app.lua`, and `/SCRIPTS/RF2/` came from the same current Rotorflight package. |
-| Battery profiles do not open | Profiles are Electric-only. Confirm RF Tool connection, valid Rotorflight battery capacities, disarmed state, stopped governor, and zero headspeed. |
-| Rotorflight FC count is unavailable | Confirm RF Tool 2.3, the `ARM` sensor, enabled Rotorflight model statistics, a disarmed model, and the complete `/SCRIPTS/RF2/` directory. |
+| Battery profiles do not open | Profiles are Electric-only. Confirm RF Tool connection, valid Rotorflight battery capacities, and current, fresh disarmed `ARM` telemetry with no armed RF Tool state. |
+| Rotorflight FC count is unavailable | Confirm RF Tool 2.3, current and fresh disarmed `ARM` telemetry, no armed RF Tool state, enabled Rotorflight model statistics, and the complete `/SCRIPTS/RF2/` directory. |
 | Nitro battery is missing | Nitro uses `Vbec`; it does not load a battery profile. |
 | Top-bar `Profile / Rate` indicator is missing | Confirm a live telemetry link and discover both `PID#` and `RTE#`. The indicator remains hidden unless both values are valid. |
 | Model image is missing | Match the EdgeTX model name and `/IMAGES/` filename, including capitalization. |

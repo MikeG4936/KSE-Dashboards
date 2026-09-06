@@ -1,5 +1,5 @@
 -- KSE admission policy only; RF Tool retains its transport and retry policy.
-local Admission = { settleTicks=40 }
+local Admission = {}
 
 function Admission.sample(name)
   -- Resolve every safety sample by name. Display caches can survive sensor-ID
@@ -15,9 +15,9 @@ function Admission.sample(name)
   return value
 end
 
-function Admission.ground(wgt)
+function Admission.disarmed(wgt)
   local reason
-  local arm, gov, rpm = Admission.sample("ARM"), Admission.sample("Gov"), Admission.sample("Hspd")
+  local arm = Admission.sample("ARM")
   local host = _G.rf2
   local hostState = type(host) == "table" and type(host.widget) == "table"
                     and host.widget.state or nil
@@ -40,41 +40,30 @@ function Admission.ground(wgt)
     reason = "WAITING FOR ARM TELEMETRY"
   elseif math.floor(arm) % 2 == 1 then
     reason = "DISARM TO CHANGE PROFILE"
-  elseif gov == nil or gov < 0 or gov > 9 or gov > math.floor(gov)
-     or not GOV_STOP_STATE[math.floor(gov)] then
-    reason = "WAITING FOR STOPPED GOVERNOR"
-  elseif rpm == nil or rpm < 0 or rpm > 0 then
-    reason = "WAITING FOR STOPPED ROTOR"
   end
-  local now = (getTime and getTime()) or 0
-  if reason or wgt.mspGroundProvider ~= host or wgt.mspGroundModel ~= name
-     or wgt.mspGroundQueue ~= queue or wgt.mspGroundWidget ~= widget then
-    wgt.mspGroundSince = nil
-    wgt.mspGroundEpoch = (wgt.mspGroundEpoch or 0) + 1
+  if reason or wgt.mspContextProvider ~= host or wgt.mspContextModel ~= name
+     or wgt.mspContextQueue ~= queue or wgt.mspContextWidget ~= widget then
+    wgt.mspContextEpoch = (wgt.mspContextEpoch or 0) + 1
   end
-  wgt.mspGroundProvider, wgt.mspGroundModel = host, name
-  wgt.mspGroundQueue, wgt.mspGroundWidget = queue, widget
+  wgt.mspContextProvider, wgt.mspContextModel = host, name
+  wgt.mspContextQueue, wgt.mspContextWidget = queue, widget
   if reason then return false, reason end
-  wgt.mspGroundSince = wgt.mspGroundSince or now
-  if now - wgt.mspGroundSince < Admission.settleTicks then
-    return false, "WAITING FOR STABLE GROUND"
-  end
   return true
 end
 
 function Admission.capture(wgt, operation)
-  operation.provider = wgt.mspGroundProvider
-  operation.modelName = wgt.mspGroundModel
-  operation.epoch = wgt.mspGroundEpoch
+  operation.provider = wgt.mspContextProvider
+  operation.modelName = wgt.mspContextModel
+  operation.epoch = wgt.mspContextEpoch
   operation.heliType = OPT.heliType
 end
 
 function Admission.valid(wgt, operation)
-  return operation ~= nil and Admission.ground(wgt)
-     and operation.provider == wgt.mspGroundProvider
-     and operation.modelName == wgt.mspGroundModel
-     and operation.queue == wgt.mspGroundQueue
-     and operation.epoch == wgt.mspGroundEpoch
+  return operation ~= nil and Admission.disarmed(wgt)
+     and operation.provider == wgt.mspContextProvider
+     and operation.modelName == wgt.mspContextModel
+     and operation.queue == wgt.mspContextQueue
+     and operation.epoch == wgt.mspContextEpoch
      and operation.heliType == OPT.heliType
 end
 

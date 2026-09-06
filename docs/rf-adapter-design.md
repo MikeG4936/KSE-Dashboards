@@ -4,11 +4,13 @@ Design review dated 2026-09-05 for slices 2/3 of the [implementation plan](imple
 
 ## Accepted decision: unmodified RF Tool, admission-only control
 
-The user selected **stopping new KSE-owned MSP admission outside safe ground while leaving RF Tool unmodified**. This applies to embedded and already-loaded external hosts. Ground evidence is checked before each new request or profile-operation stage; losing that evidence invalidates continuation callbacks and permits removal of safely identifiable pending owned entries. Foreign requests and active upstream transport state remain intact.
+The user selected **stopping new KSE-owned MSP admission unless disarm is confirmed while leaving RF Tool unmodified**. This applies to embedded and already-loaded external hosts. Confirmed-disarm evidence is checked before each new request or profile-operation stage; losing that evidence invalidates continuation callbacks and permits removal of safely identifiable pending owned entries. Foreign requests and active upstream transport state remain intact.
+
+Every KSE MSP request requires valid, current and fresh ARM bit 0 disarmed, a live link, a ready provider and no armed host contradiction. `Gov` and `Hspd` are neither sampled nor restricted for admission: rotation does not block requests when disarm is confirmed. There is no extra 40-tick (0.4-second) settle gate. Preserve the existing FC-count post-disarm settle of 150 ticks and unrelated connection/rate intervals.
 
 An already-active request may continue sending fragments and retrying indefinitely under the pinned upstream queue policy. This includes a request admitted before arming, link loss, model/provider change or reset. Callback invalidation prevents new KSE stages and stale UI updates; it cannot retract an active request or guarantee that it will not mutate the FC later. The user accepts this boundary. It is neither a per-send safety guarantee nor a guarantee of zero in-flight MSP traffic, and no latency improvement has been measured.
 
-Normal telemetry, Smart Fuel, instruments, alerts, counters and telemetry-driven profile indicators continue. Clear the pre-arm blocker banner whenever safe-ground evidence is unavailable; fresh diagnostics, ground configuration and post-flight FC count reads resume after safe-ground recovery. Preserve official RF Tool initialization, recovery, page activity and queue ownership.
+Normal telemetry, Smart Fuel, instruments, alerts, counters and telemetry-driven profile indicators continue. Clear the pre-arm blocker banner whenever confirmed-disarm evidence is unavailable; fresh diagnostics, ground configuration and post-flight FC count reads resume after confirmed-disarm recovery. Preserve official RF Tool initialization, recovery, page activity and queue ownership.
 
 No integration patch or further approval is required for the selected scope. The alternatives below document what stronger per-send cancellation and mixed-frame demultiplexing would require; they are historical design evidence, not prerequisites for the admission-only implementation.
 
@@ -62,6 +64,8 @@ External providers already holding private queue/decoder closures cannot be retr
 
 ## Historical operation model if stronger hooks are introduced
 
+The stopped-governor/zero-headspeed policy in this historical alternative was superseded by the confirmed-disarm policy above, including for profile writes.
+
 - One recorded provider, queue, owner epoch, model/type generation per operation. Capture exact message identities from API insertion before yielding.
 - Ground admission and send guard use the same strict sample policy: positively current/fresh ARM-disarmed, recognized stopped governor and zero headspeed, no contradictory host state; missing/invalid/unknown evidence denies owned sends. Use normal telemetry, not a fresh MSP request, to establish permission.
 - Set acknowledgement records runtime state, then queues verify only at a subsequent checked stage. Matching verify queues save only after another check. Each message's guard remains active regardless of which caller services it.
@@ -80,10 +84,11 @@ External providers already holding private queue/decoder closures cannot be retr
 
 ## Acceptance probes for the selected policy
 
-- Exercise every KSE request admission and profile continuation stage in Electric and Nitro, foreground and background. Armed/rotating, missing/stale/invalid or contradictory safety evidence must prevent new admissions; diagnostics and post-flight reads resume after safe-ground recovery.
+- Exercise every KSE request admission and profile continuation stage in Electric and Nitro, foreground and background. Armed, missing/stale/invalid ARM or contradictory host evidence must prevent new admissions; diagnostics and post-flight reads resume after confirmed-disarm recovery.
+- Verify rotating, running-governor, missing `Gov`/`Hspd` and stale `Gov`/`Hspd` cases admit requests when ARM confirms disarm. Verify no added 40-tick settle while preserving the FC-count 150-tick wait and unrelated connection/rate intervals.
 - Invalidate operations at arming, link loss, model/provider change, reset and ownership takeover. Assert no stale callback admits a new stage or updates a new operation. Pending owned removal preserves foreign identity/order and active upstream framing.
 - Reproduce an already-active request continuing fragments/retries after KSE invalidation, including dropped replies and upstream unlimited retry behavior. Attribute that residual traffic separately; do not count it as a failed admission gate or claim KSE cancelled it.
-- Verify ongoing telemetry, alerts, host heartbeat/recovery and last confirmed FC count; clear the pre-arm banner outside safe ground. Cover embedded and already-loaded external hosts. Record mixed-frame consumption limitations without claiming a demultiplexing fix.
+- Verify ongoing telemetry, alerts, host heartbeat/recovery and last confirmed FC count; clear the pre-arm banner without confirmed disarm. Cover embedded and already-loaded external hosts. Record mixed-frame consumption limitations without claiming a demultiplexing fix.
 - Run compiler/resource and parity checks, then record outstanding real-radio traffic, memory and timing checks. Software probes establish only their tested scope.
 
 ## Historical acceptance probes for a stronger adapter
