@@ -24,13 +24,15 @@ def instrument(source):
   unsafe=profileSwitchUnsafe,
   timeout=profileCheckOperationTimeout,
 """
+    boundary = source.rfind("\nreturn {", 0, source.index(marker))
+    if boundary < 0:
+        raise ValueError("Cannot locate profile-controller return")
+    source = source[:boundary] + ("\nprofileSetEntryPrompt=function() end\n"
+        "profileShowArmingBanner=function() end\n"
+        "showBatteryProfileMenu=function() return false end\n") + source[boundary:]
     source = source.replace(marker, exports + marker)
-    # Do not require an LVGL object tree to exercise allowUi=true admission.
-    source = source.replace("\nreturn {\n" + exports,
-        "\nprofileSetEntryPrompt=function() end\nprofileShowArmingBanner=function() end\n"
-        "showBatteryProfileMenu=function() return false end\nreturn {\n" + exports)
     pos = source.rindex("\nreturn {")
-    return source[:pos] + source[pos:].replace("return {", "return { audit={OPT=OPT, FC=FC, profiles=batteryProfiles},", 1)
+    return source[:pos] + source[pos:].replace("return {", "return { audit={OPT=OPT, FC=FC, profiles=batteryProfiles, owner=WidgetOwner},", 1)
 
 
 def main():

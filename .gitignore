@@ -96,3 +96,10 @@
 !/theme-gallery/assets/
 /theme-gallery/assets/*
 !/theme-gallery/assets/*.png
+
+!/src/shared/widget_owner.lua
+!/tests/ownership/
+/tests/ownership/*
+!/tests/ownership/*.py
+!/tests/ownership/*.lua
+!/tests/ownership/README.md

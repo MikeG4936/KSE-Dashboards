@@ -15,3 +15,9 @@ Child bounds use the usable dialog **body**, not the whole dialog. In the pinned
 The original whole-dialog scaler puts the last row four pixels past the compact body and twelve pixels past the 800-wide body. The body-aware scale corrects those bounds. The 480×320 geometry stays unchanged; 800×480 geometry changes intentionally to reserve the larger firmware header.
 
 These mocks check submitted geometry and Lua callbacks. They do not emulate LVGL rendering, glyph clipping, focus/scroll behavior, physical touch handling, MSP transport, or RF lifecycle scheduling. The armed refusal cases exercise the ARM-only admission policy with current/fresh ARM and connection checks; they do not certify every RF write stage. See [MSP admission contracts](../msp_admission/README.md) for transaction staging, identity invalidation and retained active RF Tool retry ownership. Real-radio picker operation remains a separate validation checkpoint.
+
+The mock resets the ownership registry before loading the dashboard. Independent
+picker cases claim a fresh synthetic widget through the production owner API,
+advancing the mock clock by one lease interval between cases. This is fixture
+isolation; the picker itself adds no ARM settling delay. Full callback ownership
+and stale-owner handoff are exercised separately in `tests/ownership`.

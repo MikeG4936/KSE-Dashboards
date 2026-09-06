@@ -30,7 +30,8 @@ local function eq(label,actual,expected)
   assert(actual==expected,label..": expected "..tostring(expected)..", got "..tostring(actual))
   print("PASS|"..label)
 end
-local function setup(mode,counter)
+local function setup(mode,counter,external)
+  _G.__KSE_WIDGET_OWNER_V1=nil
   env={now=1000,model="Admission fixture",filename="fixture.yml",rssi=100,
        ids={ARM=77,Gov=78,Hspd=79},samples={
          [77]={value=0,current=true,fresh=true},
@@ -40,7 +41,8 @@ local function setup(mode,counter)
   rf2={apiVersion=12.09,rfToolApiVersion=1.0,clock=function() return env.now/100 end,
        units={seconds=1,meters=2},
        registerWidget=function() end,call=function(fn,...) return fn(...) end,
-       widget={state="disarmed",background=function() env.hostCalls=env.hostCalls+1 end}}
+       widget={state="disarmed",background=function(_,skipUi)
+         env.hostCalls=env.hostCalls+1; env.hostSkipUi=skipUi end}}
   rf2.executeScript=function(name)
     assert(name=="MSP/common")
     return function(cmd,payload)
@@ -71,6 +73,8 @@ local function setup(mode,counter)
     profileInitialReadFinished=true,profileCapacityReadFinished=true,
     profileInitialReadValid=true,profileActive=1,profileAutoShown=true,
     profileConnectReadyAt=0,armingStatusNextAt=1000000}
+  assert(api.owner.claim(w,false),"fixture owner claim failed")
+  if not external then api.owner.host(rf2.widget,rf2) end
   api.profiles.flightSourceChanged(w)
   return api,w,rf2.mspQueue
 end
@@ -96,6 +100,27 @@ local function commands()
   local out={}
   for _,sent in ipairs(env.sent) do out[#out+1]=tostring(sent.command) end
   return table.concat(out,",")
+end
+
+-- KSE services only its embedded host; external widgets have their own manager.
+do
+  local a,w,q=setup(1,1,true)
+  assert(a.profiles.begin(w,"select",2))
+  service(a,w)
+  eq("external host is not driven by KSE",env.hostCalls,0)
+  eq("external queue is not processed by KSE",#env.sent,0)
+  eq("external queue preserves pending KSE request",#q.messageQueue,1)
+  a,w,q=setup()
+  assert(a.profiles.begin(w,"select",2))
+  service(a,w)
+  eq("embedded pending request still services background",env.hostCalls,1)
+  eq("embedded background suppresses host UI",env.hostSkipUi,true)
+  eq("embedded queue sends pending request",q.currentMessage.command,176)
+  q.processQueue=function() error("fixture queue failure") end
+  service(a,w)
+  eq("embedded queue failure still services background",env.hostCalls,2)
+  eq("queue failure preserves UI suppression",env.hostSkipUi,true)
+  eq("embedded queue failure is visible",w.profileRfToolHostError,"RF TOOL QUEUE ERROR")
 end
 
 -- All four admission paths must independently deny unsafe calls.

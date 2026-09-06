@@ -63,9 +63,15 @@ __runIntegration=function()
     eq("local reload clears error",t.A.flightSaveError,false)
   elseif __scenario=="recreate" then
     exhaust(); create()
+    eq("recreated duplicate waits for foreground ownership",w.kseInitialized,nil)
+    eq("recreated duplicate retains exhausted retry state",t.state.attempts,3)
+    eq("recreated duplicate preserves dirty cache",t.state.dirty,true)
+    m.now=m.now+500
+    t.refresh(w,nil,nil)
+    eq("recreated foreground initializes after lease expires",w.kseInitialized,true)
     eq("recreate resets retry budget",t.state.attempts,0)
-    eq("recreate preserves dirty cache",t.state.cache.Fixture,8)
-    callback(2010,30)
+    eq("recreate preserves qualified cache",t.state.cache.Fixture,8)
+    callback(2030,30)
     eq("recreate persists",fs.files[path],updated)
     eq("recreate no recount",t.count(),8)
   elseif __scenario=="unreadable" then

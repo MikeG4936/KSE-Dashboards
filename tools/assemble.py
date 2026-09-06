@@ -5,7 +5,7 @@ from pathlib import Path
 import re
 
 ROOT = Path(__file__).resolve().parents[1]
-MODULES = {"count_storage": "Storage", "msp_admission": "MspAdmission"}
+MODULES = {"widget_owner": "WidgetOwner", "count_storage": "Storage", "msp_admission": "MspAdmission"}
 
 
 def main():

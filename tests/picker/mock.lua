@@ -1,3 +1,4 @@
+_G.__KSE_WIDGET_OWNER_V1=nil
 -- Host-side mocks; no RF packet transport or physical LVGL rendering.
 __mock={now=100,arm=0,dialogs=0,menus=0,closed=0,unrelatedReads=0}
 LCD_W=800; LCD_H=480

@@ -21,6 +21,10 @@
     end
     local wgt={profileRfState="disarmed",profileActive=1,profileCapacitiesReady=true,
                profileCapacities={1000,2000,3000,4000,5000,6000}}
+    if api.owner then
+      __mock.now=__mock.now+500
+      assert(api.owner.claim(wgt,true),"picker fixture owner claim failed")
+    end
     if api.disarmed then
       assert(api.disarmed(wgt),"fresh disarmed ARM should admit immediately")
     end

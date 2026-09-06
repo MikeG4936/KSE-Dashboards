@@ -1,3 +1,69 @@
+-- BEGIN SHARED widget_owner
+local WidgetOwner = (function()
+-- One active KSE widget across both variants. Lease time uses EdgeTX 10ms ticks.
+local Owner = { leaseTicks=500 }
+local registry = _G.__KSE_WIDGET_OWNER_V1
+if type(registry) ~= "table" then
+  registry = {epoch=0, proxies=setmetatable({}, {__mode="k"})}
+  _G.__KSE_WIDGET_OWNER_V1 = registry
+end
+
+function Owner.current(widget)
+  return widget ~= nil and registry.widget == widget
+     and widget.kseOwnerEpoch == registry.epoch
+end
+
+function Owner.claim(widget, mayTakeOver)
+  local now = (getTime and getTime()) or 0
+  if Owner.current(widget) then registry.seen=now; return true end
+  if registry.widget and not mayTakeOver then return false end
+  if registry.widget and now >= (registry.seen or now)
+     and now - (registry.seen or now) < Owner.leaseTicks then return false end
+  local previous = registry.widget
+  if previous and type(previous.kseRevoke) == "function" then previous.kseRevoke() end
+  registry.epoch = registry.epoch + 1
+  registry.widget, registry.seen = widget, now
+  widget.kseOwnerEpoch = registry.epoch
+  return true
+end
+
+function Owner.sharedStore(fallback)
+  registry.store = registry.store or fallback
+  return registry.store
+end
+
+function Owner.host(host, core)
+  if host then registry.host, registry.core = host, core end
+  if registry.core ~= _G.rf2
+     or (registry.core and registry.core.widget and registry.core.widget ~= registry.host) then
+    registry.host, registry.core = nil, nil
+  end
+  return registry.host, registry.core
+end
+
+function Owner.register(provider)
+  if registry.proxies[provider] then return true end
+  local proxy = {onStateChanged=function(_, state)
+    local widget = registry.widget
+    if provider == _G.rf2 and Owner.current(widget) then widget.profileRfState = state end
+  end}
+  local ok = pcall(provider.registerWidget, proxy)
+  if ok then registry.proxies[provider] = proxy end
+  return ok
+end
+
+function Owner.blocked(widget)
+  if widget.kseBlockedDrawn or not lvgl then return end
+  lvgl.clear()
+  lvgl.label({x=8,y=8,w=math.max(1,((widget.zone or {}).w or LCD_W or 480)-16),
+    text="Another KSE dashboard is active.\nRemove it, then reopen this screen.",
+    font=_G.SMLSIZE or 0})
+  widget.kseBlockedDrawn = true
+end
+
+return Owner
+end)()
+-- END SHARED widget_owner
 local G = {
   referenceW=800, referenceH=480,
   screenW=tonumber(LCD_W) or 800, screenH=tonumber(LCD_H) or 480,
@@ -516,6 +582,7 @@ local function isPhysicalMotorSource(src)
   return not inspected
 end
 local function applyOptions(opts)
+  opts = opts or {}
   local rawTheme = tonumber(opts and opts.Theme) or 0
   OPT.bgTransparent   = (rawTheme == 3 or rawTheme == 19)
   applyTheme(THEME_NAMES[rawTheme] or "dark")
@@ -542,10 +609,10 @@ local function applyOptions(opts)
     -- Heli Type CHOICE (1-based): Electric=1, Nitro=2, OMPHOBBY=3.
     -- OMPHOBBY shares the percentage bar but has its own telemetry contract.
     local bb = tonumber(opts.HeliType or opts["Heli Type"]) or 1
-    if bb < 1 or bb > 3 then bb = 1 end
+    if not (bb >= 1 and bb <= 3) or bb > math.floor(bb) then bb = 1 end
     OPT.heliType = bb
     OPT.battBarMode = (bb == HELI_NITRO) and 1 or 0
-    OPT.reservePct  = tonumber(opts.BattRsv or opts["Batt Reserve %"]) or 0
+    OPT.reservePct  = tonumber(opts.BattRsv or opts["Batt Reserve %"]) or 20
     if OPT.reservePct < 0 then OPT.reservePct = 0 end
     if OPT.reservePct > 50 then OPT.reservePct = 50 end
     OPT.battVoice   = (opts.BattVoice == 1 or opts.BattVoice == true)
@@ -556,9 +623,9 @@ local function applyOptions(opts)
        and countMode ~= FC.ROTORFLIGHT then
       countMode = FC.ROTORFLIGHT
     end
-    OPT.flightCounter = countMode
-    local parsedMin = parseVolt(opts.RxPackMin, nil)
-    local parsedMax = parseVolt(opts.RxPackMax, nil)
+    OPT.flightCounter = bb == HELI_OMPHOBBY and FC.RADIO or countMode
+    local parsedMin = parseVolt(opts.RxPackMin or "6.60", nil)
+    local parsedMax = parseVolt(opts.RxPackMax or "8.40", nil)
     OPT.rxPackMin = parsedMin or 6.6
     OPT.rxPackMax = parsedMax or 8.4
     OPT.rxPackValid = parsedMin ~= nil and parsedMax ~= nil
@@ -566,6 +633,7 @@ local function applyOptions(opts)
                        and parsedMax <= SAFETY.rxPackMaxAllowed
                        and (parsedMax - parsedMin) >= 0.1
   end
+  if OPT.heliType == HELI_OMPHOBBY then OPT.flightCounter = FC.RADIO end
   A.motorSourcePhysical = isPhysicalMotorSource(SRC.motorSwitch)
   A.motorSourceReadable = A.motorSourcePhysical
                           and getValSrc(SRC.motorSwitch) ~= nil
@@ -843,49 +911,36 @@ local function sanitizeFsName(name)
   return trim(s)
 end
 local function get(name)
-  local source = name
-  local sourceKey
-  local sourceKnown = false
+  local source, sourceKnown = name, false
   if type(name) == "string" and getFieldInfoFn then
-    sourceKey = "$" .. name
-    local cached = RESOLVED[sourceKey]
-    if cached ~= nil then
-      source = cached
-      sourceKnown = true
-    else
-      local infoOk, info = pcall(getFieldInfoFn, name)
-      if infoOk and type(info) == "table" and info.id ~= nil then
-        source = info.id
-        RESOLVED[sourceKey] = source
-        sourceKnown = true
-      elseif infoOk then
-        -- getValue(name) returns zero for a missing source. A successful
-        -- metadata lookup returning nil lets us distinguish that from a live
-        -- telemetry source whose legitimate value is zero.
-        return nil, false, false, false
-      end
+    local key, now = "$" .. name, frameNow()
+    local cached = RESOLVED[key]
+    -- Motor-stop evidence cannot use an id cached before sensor discovery.
+    local immediate = name == "ARM" or name == "Gov" or name == "Hspd" or name == "RPM"
+    if immediate or not cached or now < cached.tick or now - cached.tick >= 100 then
+      local ok, info = pcall(getFieldInfoFn, name)
+      cached = {tick=now, id=ok and type(info) == "table" and info.id or false}
+      RESOLVED[key] = cached
     end
+    if not cached.id then return nil, false, false, false end
+    source, sourceKnown = cached.id, true
   end
-
   local sourceValueFn = rawget(_G, "getSourceValue") or _G.getSourceValue
   if type(sourceValueFn) == "function" then
-    local ok, v, isCurrent, isFresh = pcall(sourceValueFn, source)
-    if not ok or v == nil or isCurrent == false then
-      -- Source ids can change after telemetry discovery. Re-resolve a stale id
-      -- on the next sample instead of pinning the model to it indefinitely.
-      if sourceKey then RESOLVED[sourceKey] = nil end
-      return nil, false, isFresh == true, sourceKnown
+    local ok, value, current, fresh = pcall(sourceValueFn, source)
+    if not ok or value == nil or current ~= true then
+      return nil, false, fresh == true, sourceKnown
     end
-    if type(v) == "table" then v = v.value end
-    if v == nil then return nil, false, isFresh == true, sourceKnown end
-    return v, true, isFresh ~= false, true
+    if type(value) == "table" then value = value.value end
+    return value, value ~= nil, fresh == true, sourceKnown
   end
-
-  local ok, v = pcall(getValue, source)
-  if not ok or v == nil then return nil, false, false, sourceKnown end
-  if type(v) == "table" then v = v.value end
-  return v, true, true, true
+  -- Legacy values can support display; they cannot prove fresh motor-stop evidence.
+  local ok, value = pcall(getValue, source)
+  if not ok then return nil, false, false, sourceKnown end
+  if type(value) == "table" then value = value.value end
+  return value, value ~= nil, false, sourceKnown
 end
+
 local function getModelName()
   local v = F.modelName
   if v ~= nil then return v end
@@ -1090,7 +1145,7 @@ function sensors.getBattProfile()
   if v ~= nil then return v end
   v = sensors.getSensorNumber("batteryProfile")
   local whole = v ~= nil and math.floor(v) or nil
-  if whole == nil or v ~= whole
+  if whole == nil or v > whole
      or whole < 1 or whole > BATTERY_PROFILE_COUNT then
     v = nil
   else
@@ -1111,7 +1166,9 @@ end
 function sensors.getHeadspeed()
   local v = F.rpm
   if v ~= nil then return v end
-  v = sensors.getSensorNumber("headspeed")
+  local current, fresh
+  v, current, fresh = sensors.getSensorNumber("headspeed")
+  D.rpmFresh = current == true and fresh == true
   local sane = v ~= nil and v >= 0 and v <= 100000
   if not sane then v = 0 end
   D.rpmValid = sane
@@ -1133,13 +1190,15 @@ function sensors.getGovernorMode()
   if cached ~= nil then return cached ~= false and cached or nil end
   if OPT.heliType == HELI_OMPHOBBY then
     D.govValid = false
+    D.govFresh = false
     D.govCurrentInvalid = false
     F.govNumber = false
     return nil
   end
-  local raw, current = sensors.getSensorNumber("governorMode")
+  local raw, current, fresh = sensors.getSensorNumber("governorMode")
+  D.govFresh = current == true and fresh == true
   local whole = raw ~= nil and math.floor(raw) or nil
-  local valid = whole ~= nil and raw == whole and GOV_STATES[whole] ~= nil
+  local valid = whole ~= nil and not (raw > whole) and GOV_STATES[whole] ~= nil
   D.govValid = valid
   -- Missing/stale Gov may use the independent Hspd proof. A current but
   -- malformed or unknown enum is different: it must block that fallback.
@@ -1904,8 +1963,10 @@ local function resetSessionEvidence()
   D.tempValid = false
   D.becValid = false
   D.rpmValid = false
+  D.rpmFresh = false
   D.tailRpmValid = false
   D.govValid = false
+    D.govFresh = false
   D.govCurrentInvalid = false
   D.hasBattData = false
   D.adjustedPercent = 0
@@ -2486,8 +2547,8 @@ local function pauseFlightBatteryAlerts(position, now, proof)
 end
 local function updateRotorflightMotorGate(now, position, switchChanged,
                                            governorMode, headRpm)
-  local govUsable = D.govValid and governorMode ~= nil
-  local rpmUsable = D.rpmValid and headRpm ~= nil
+  local govUsable = D.govValid and D.govFresh and governorMode ~= nil
+  local rpmUsable = D.rpmValid and D.rpmFresh and headRpm ~= nil
   if not govUsable and not rpmUsable then
     clearMotorGateEvidence()
     return
@@ -2592,7 +2653,7 @@ local function updateRotorflightMotorGate(now, position, switchChanged,
   end
 end
 local function updateOmpMotorGate(now, position, headRpm)
-  if not D.rpmValid or headRpm == nil then
+  if not D.rpmValid or not D.rpmFresh or headRpm == nil then
     clearMotorGateEvidence()
     return
   end
@@ -2663,17 +2724,17 @@ updateMotorAlertGate = function(now, governorMode, headRpm)
     if OPT.heliType == HELI_ELECTRIC then
       if A.motorPauseProof == "rpm" then
         local govBlocksRpmHold = D.govCurrentInvalid
-                                 or (D.govValid and governorMode ~= nil
+                                 or (D.govValid and D.govFresh and governorMode ~= nil
                                      and not GOV_PAUSE_HOLD_STATE[governorMode])
-        if govBlocksRpmHold or not D.rpmValid or headRpm == nil
+        if govBlocksRpmHold or not D.rpmValid or not D.rpmFresh or headRpm == nil
            or headRpm >= SAFETY.electricMotorRunningRpm then
           releaseMotorAlertPause(now)
         end
-      elseif not D.govValid or governorMode == nil
+      elseif not D.govValid or not D.govFresh or governorMode == nil
              or not GOV_PAUSE_HOLD_STATE[governorMode] then
         releaseMotorAlertPause(now)
       end
-    elseif not D.rpmValid or headRpm == nil
+    elseif not D.rpmValid or not D.rpmFresh or headRpm == nil
            or headRpm >= SAFETY.ompMotorRunningRpm then
       releaseMotorAlertPause(now)
     end
@@ -3663,6 +3724,7 @@ function Admission.sample(name)
 end
 
 function Admission.disarmed(wgt)
+  if not WidgetOwner.current(wgt) then return false, "ANOTHER KSE DASHBOARD IS ACTIVE" end
   local reason
   local arm = Admission.sample("ARM")
   local host = _G.rf2
@@ -3858,6 +3920,7 @@ local function profileStartEmbeddedRfTool(wgt)
     wgt.profileRfToolHostNextTick = now + 500
     return
   end
+  WidgetOwner.host(host, profileRf2())
   wgt.profileRfToolHost = host
   wgt.profileRfToolHostCore = profileRf2()
   wgt.profileRfToolHostError = nil
@@ -3865,57 +3928,30 @@ local function profileStartEmbeddedRfTool(wgt)
 end
 
 local function profileServiceEmbeddedRfTool(wgt)
+  local host, core = WidgetOwner.host()
+  if host then wgt.profileRfToolHost, wgt.profileRfToolHostCore = host, core end
+  if wgt.profileRfToolHostCore ~= profileRf2()
+     or (wgt.profileRfToolHostCore and wgt.profileRfToolHostCore.widget
+         and wgt.profileRfToolHostCore.widget ~= wgt.profileRfToolHost) then
+    wgt.profileRfToolHost, wgt.profileRfToolHostCore = nil, nil
+  end
   profileStartEmbeddedRfTool(wgt)
-  local shared = profileRf2()
-  local host = wgt.profileRfToolHost
-               or (shared and type(shared.widget) == "table"
-                   and shared.widget or nil)
-  if host == wgt.profileRfToolHost and wgt.profileRfToolHostCore
-     and shared ~= wgt.profileRfToolHostCore then
-    wgt.profileRfToolHost = nil
-    wgt.profileRfToolHostCore = nil
-    host = shared and type(shared.widget) == "table" and shared.widget or nil
+  host, core = wgt.profileRfToolHost, wgt.profileRfToolHostCore
+  -- External widgets run under their own EdgeTX manager, never through KSE.
+  if not host or core ~= profileRf2() then return end
+  local state = host.state
+  local queue = core and core.mspQueue
+  if (state == "connected" or state == "armed" or state == "disarmed")
+     and type(queue) == "table" and type(queue.processQueue) == "function" then
+    local ok = pcall(queue.processQueue, queue)
+    wgt.profileQueueFault = not ok or nil
+    if not ok then wgt.profileRfToolHostError = "RF TOOL QUEUE ERROR" end
   end
-
-  local function serviceQueue(core, currentHost)
-    local state = currentHost and currentHost.state or wgt.profileRfState
-    local hostReady = state == "connected" or state == "armed"
-                      or state == "disarmed"
-    local coreReady = not currentHost and profileRadioLinkLive()
-    local queue = core and core.mspQueue or nil
-    local api = core and tonumber(core.apiVersion) or nil
-    if not (hostReady or coreReady)
-       or not api or api < ROTORFLIGHT_23_MSP_API
-       or type(queue) ~= "table"
-       or type(queue.processQueue) ~= "function" then return false end
-    local queueOk = pcall(queue.processQueue, queue)
-    if not queueOk then
-      wgt.profileRfToolHostError = "RF TOOL QUEUE ERROR"
-      wgt.profileQueueFault = true
-    elseif wgt.profileRfToolHostError == "RF TOOL QUEUE ERROR" then
-      wgt.profileRfToolHostError = nil
-      wgt.profileQueueFault = nil
-    end
-    return true
-  end
-
-  -- Poll every KSE-owned in-flight MSP operation before RF Tool background
-  -- services. This keeps profiles, FC stats, and arming diagnostics on one
-  -- consistent queue-ownership policy.
-  local priorityPass = wgt.profileOperation ~= nil
-                       or (OPT.heliType ~= HELI_OMPHOBBY
-                           and wgt.armingStatusPending == true)
-  local priorityServiced = priorityPass and serviceQueue(shared, host) or false
-  if host and type(host.background) == "function" and not priorityServiced then
-    local ok = pcall(host.background, host, true)
-    if not ok then
-      wgt.profileRfToolHostError = "RF TOOL HOST ERROR"
-      return
-    end
-  end
-  if not priorityServiced then
-    serviceQueue(profileRf2(), host)
-  end
+  -- Match official foreground ordering, including background during waits.
+  -- true keeps RF Tool's private UI runner out of the KSE display.
+  local ok = pcall(host.background, host, true)
+  if not ok then wgt.profileRfToolHostError = "RF TOOL HOST ERROR"
+  elseif not wgt.profileQueueFault then wgt.profileRfToolHostError = nil end
 end
 
 local function profileRfToolStatus(wgt)
@@ -4162,7 +4198,7 @@ local function profileDecodeCapacityConfig(wgt, config)
     local entry = allProfiles and source[i - 1] or nil
     local capacity = type(entry) == "table" and tonumber(entry.value)
                      or tonumber(entry)
-    if not capacity or capacity ~= math.floor(capacity)
+    if not capacity or capacity > math.floor(capacity)
        or capacity < 0 or capacity > BATTERY_CAPACITY_MAX then
       allProfiles = false
       break
@@ -4914,6 +4950,8 @@ local function profileButtonText(wgt, profileIndex, multiline)
 end
 
 local function showNativeBatteryProfileMenu(wgt)
+  local epoch = wgt.kseOwnerEpoch
+  local function current() return WidgetOwner.current(wgt) and wgt.kseOwnerEpoch == epoch end
   if not lvgl or type(lvgl.menu) ~= "function" then
     profileSetNotice(wgt, "BATTERY PROFILE ERROR",
       "UPDATE EDGETX FOR PROFILE PICKER", C_RED, 500)
@@ -4953,6 +4991,7 @@ local function showNativeBatteryProfileMenu(wgt)
       return 0
     end,
     set=function(selected)
+      if not current() then return end
       local valueIndex = tonumber(selected)
       wgt.profileAutoShown = true
       if safetyIndex and valueIndex == safetyIndex then
@@ -5008,6 +5047,8 @@ closeBatteryProfileMenu = function(wgt)
 end
 
 showBatteryProfileMenu = function(wgt)
+  local epoch = wgt.kseOwnerEpoch
+  local function current() return WidgetOwner.current(wgt) and wgt.kseOwnerEpoch == epoch end
   if wgt.profileDialog then return true end
   if (G.w < 430 or G.h < 300) and lvgl
      and type(lvgl.menu) == "function"
@@ -5028,7 +5069,7 @@ showBatteryProfileMenu = function(wgt)
   local function dy(value) return math.max(1, G.rounded(value * dialogBodyH / 253)) end
   local dialogOk, dialog = pcall(lvgl.dialog, {
     title=title, w=dialogW, h=dialogH,
-    close=function() wgt.profileDialog = nil end,
+    close=function() if current() then wgt.profileDialog = nil end end,
   })
   if not dialogOk or type(dialog) ~= "table"
      or type(dialog.build) ~= "function" then
@@ -5058,12 +5099,14 @@ showBatteryProfileMenu = function(wgt)
       textColor=C_TEXT,
       text=profileButtonText(wgt, profileIndex, true),
       active=function()
+        if not current() then return false end
         local unsafe = profileSwitchUnsafe(wgt)
         return profileTransport() ~= nil and not unsafe
                and (not wgt.profileBusy or profileCapacityInProgress(wgt))
                and wgt.profileActive ~= profileIndex
       end,
       press=function()
+      if not current() then return end
         if (wgt.profileBusy and not profileCapacityInProgress(wgt))
            or wgt.profileActive == profileIndex then return end
         local blocked, blockedMessage = profileSwitchUnsafe(wgt)
@@ -5099,8 +5142,9 @@ showBatteryProfileMenu = function(wgt)
     type="button", x=dx(18), y=dy(213), w=dx(174), h=dy(40),
     text="TRY mAh", color=C_TILE, textColor=C_TEXT,
     font=SMLSIZE, cornerRadius=6,
-    active=function() return not wgt.profileBusy end,
+    active=function() return current() and not wgt.profileBusy end,
     press=function()
+      if not current() then return end
       if wgt.profileBusy then return end
       wgt.profileCapacityRefreshRequested = true
       wgt.profileAutoShown = false
@@ -5112,6 +5156,7 @@ showBatteryProfileMenu = function(wgt)
     text="CLOSE", color=C_TILE, textColor=C_TEXT,
     font=SMLSIZE, cornerRadius=6,
     press=function()
+      if not current() then return end
       wgt.profileAutoShown = true
       closeBatteryProfileMenu(wgt)
     end,
@@ -5136,11 +5181,7 @@ local function profileRegisterWithRfTool(wgt)
   local canRegister = toolApi and toolApi >= RF_TOOL_WIDGET_API
                       and type(shared.registerWidget) == "function"
   if canRegister and not wgt.profileRfToolRegistered then
-    wgt.onStateChanged = function(widget, newState)
-      widget.profileRfState = newState
-    end
-    local ok = pcall(shared.registerWidget, wgt)
-    wgt.profileRfToolRegistered = ok
+    wgt.profileRfToolRegistered = WidgetOwner.register(shared)
   end
   local state
   if shared.widget and shared.widget.state then
@@ -5167,7 +5208,7 @@ local function profileOnlyConfigured(wgt)
   local onlyProfile
   for i = 1, BATTERY_PROFILE_COUNT do
     local capacity = tonumber(wgt.profileCapacities[i])
-    if not capacity or capacity ~= math.floor(capacity)
+    if not capacity or capacity > math.floor(capacity)
        or capacity < 0 or capacity > BATTERY_CAPACITY_MAX then return nil end
     if capacity > 0 then
       if onlyProfile then return nil end
@@ -5597,7 +5638,15 @@ local function serviceBatteryProfileFeature(wgt, allowUi, event, touchState)
   profileServiceArmingStatus(wgt, armingConnected, now, allowUi)
 end
 
+local function profileRetire(wgt)
+  profileCancelOperationQueue(wgt.profileOperation)
+  profileCancelOperationQueue(wgt.armingStatusOperation)
+  wgt.profileOperation, wgt.armingStatusOperation = nil, nil
+  wgt.profileBusy, wgt.armingStatusPending = false, false
+end
+
 return {
+  retire=profileRetire,
   service=serviceBatteryProfileFeature,
   reset=profileResetConnection,
   buildPrompt=profileBuildEntryPrompt,
@@ -5635,7 +5684,7 @@ local function ensureLayout(widget, fullScreen)
   return true
 end
 
-local function refresh(widget, event, touchState)
+local function refreshOwned(widget, event, touchState)
   clearFrameCache()
   ensureLayout(widget, event ~= nil)
   local serviced
@@ -5647,7 +5696,7 @@ local function refresh(widget, event, touchState)
   end
   if serviced then updateUiState() end
 end
-local function background(widget)
+local function backgroundOwned(widget)
   clearFrameCache()
   -- Session extrema are flight data too; keep them current while another page
   -- is visible instead of recording only the moments this dashboard is open.
@@ -5658,7 +5707,7 @@ local function background(widget)
     batteryProfiles.service(widget, false, nil, nil)
   end
 end
-local function create(zone, options)
+local function createOwned(zone, options)
   -- Drop any stale frame cache (e.g. cached model name) before loading flights.
   clearFrameCache()
   applyOptions(options)
@@ -5688,7 +5737,7 @@ local function create(zone, options)
   batteryProfiles.flightSourceChanged(widget)
   return widget
 end
-local function update(widget, options)
+local function updateOwned(widget, options)
   widget.options = options
   local previousHeliType = OPT.heliType
   local previousSimulation = OPT.simTelemetry
@@ -5778,6 +5827,44 @@ end
 -- suppresses Electric/OMPHOBBY flight-pack alerts only after current aircraft
 -- telemetry corroborates a stopped state; missing evidence fails loud. After
 -- the first dead.wav playback, movement separately acknowledges only repeats.
+local function initializeOwner(widget)
+  flightStore = WidgetOwner.sharedStore(flightStore)
+  flightCache = flightStore.cache
+  for key in pairs(widget) do
+    if key ~= "zone" and key ~= "options" and key ~= "kseOwnerEpoch"
+       and key ~= "profileOperationToken" and key ~= "armingStatusToken" then widget[key] = nil end
+  end
+  local created = createOwned(widget.zone, widget.options)
+  for key, value in pairs(created) do widget[key] = value end
+  widget.kseInitialized, widget.kseBlockedDrawn = true, nil
+  widget.layoutSignature = nil
+  widget.kseRevoke = function()
+    batteryProfiles.retire(widget)
+    widget.kseInitialized = false
+  end
+end
+local function create(zone, options)
+  local widget = {zone=zone, options=options or {}}
+  if WidgetOwner.claim(widget, false) then initializeOwner(widget) end
+  return widget
+end
+local function update(widget, options)
+  if not widget then return end
+  widget.options = options or {}
+  if not WidgetOwner.claim(widget, false) then return end
+  updateOwned(widget, options)
+end
+local function refresh(widget, event, touchState)
+  if not widget then return end
+  if not WidgetOwner.claim(widget, true) then WidgetOwner.blocked(widget); return end
+  if not widget.kseInitialized then initializeOwner(widget) end
+  refreshOwned(widget, event, touchState)
+end
+local function background(widget)
+  if not widget or not WidgetOwner.claim(widget, false) then return end
+  if widget.kseInitialized then backgroundOwned(widget) end
+end
+
 local options = {
   { "Theme",    CHOICE, 1, { "Dark", "Light", "Transparent",
                              "Orange", "Red", "Blue", "Pink", "Green",

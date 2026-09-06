@@ -15,12 +15,12 @@ def instrument(source: str) -> str:
         raise ValueError("Expected battery profile export anchor not found")
     # A style-only historical comparison normalizes the admission result;
     # current behavioral cases still run the real ARM checks without this stub.
-    boundary = "\nreturn {\n" + anchor
-    if source.count(boundary) != 1:
+    boundary = source.rfind("\nreturn {", 0, source.index(anchor))
+    if boundary < 0:
         raise ValueError("Expected profile-controller return boundary not found")
-    source = source.replace(boundary,
-        '\nif arg[1]=="style" then profileSwitchUnsafe=function() return false end end\n'
-        + "return {\n" + anchor)
+    source = (source[:boundary]
+        + '\nif arg[1]=="style" then profileSwitchUnsafe=function() return false end end\n'
+        + source[boundary:])
     source = source.replace(anchor, "  picker=showBatteryProfileMenu,\n" + anchor)
     if "function Admission.disarmed(" in source:
         source = source.replace(anchor, "  disarmed=MspAdmission.disarmed,\n" + anchor)
@@ -28,7 +28,7 @@ def instrument(source: str) -> str:
     if end < 0 or "useLvgl" not in source[end:]:
         raise ValueError("Expected final widget descriptor not found")
     return (HERE.joinpath("mock.lua").read_text() + "\n" + source[:end]
-            + "\n__picker={show=batteryProfiles.picker,disarmed=batteryProfiles.disarmed,G=G,apply=applyOptions,clear=clearFrameCache}\n"
+            + "\n__picker={owner=WidgetOwner,show=batteryProfiles.picker,disarmed=batteryProfiles.disarmed,G=G,apply=applyOptions,clear=clearFrameCache}\n"
             + HERE.joinpath("contracts.lua").read_text())
 
 
