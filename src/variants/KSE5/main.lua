@@ -769,6 +769,14 @@ local function batteryFooter()
 end
 
 local function batteryInvalidMessage()
+  if OPT.autoHeliType and not AUTO_HELI.ready then
+    if G.compact then
+      if AUTO_HELI.status == "AUTO DISCONNECTED" then return "DISCONNECTED" end
+      if AUTO_HELI.status == "CONFIRMING FC NAME" then return "CONFIRM NAME" end
+      return "WAIT FC NAME"
+    end
+    return AUTO_HELI.status or "WAITING FOR FC NAME"
+  end
   if not OPT.simTelemetry and A.motorConfigError then
     return G.compact and "SET MOTOR SW" or "SET MOTOR SWITCH"
   end
@@ -790,6 +798,7 @@ local function updateRings(wgt)
     batteryValid = D.hasBattData
     batteryPct = A.displayPercentInit and A.displayPercent or D.adjustedPercent
   end
+  if OPT.autoHeliType and not AUTO_HELI.ready then batteryValid = false end
   updateRing(wgt, 1, tostring(math.floor(batteryPct or 0)), "%",
     batteryFooter(), (batteryPct or 0) / 100,
     batteryColor(batteryPct), batteryValid, C_DIM,
@@ -911,6 +920,7 @@ end
 -- MSP queue for other EdgeTX widgets. KSE5 deliberately uses that API as
 -- its sole profile transport so it never competes for telemetry frames.
 -- @include shared:rf.lua
+-- @include shared:auto_heli.lua
 local function buildUi(wgt)
   if not lvgl then wgt.uiBuilt = false; return end
   lvgl.clear()
@@ -981,7 +991,7 @@ local options = {
     } },
   { "TxBatt",    CHOICE, 1, { "LiPo", "Li-Ion" } },
   { "MinFlight", VALUE, TOPBAR_MIN_DUR_DEFAULT, -30, 120 },
-  { "HeliType",  CHOICE, 1, { "Electric", "Nitro", "OMPHOBBY" } },
+  { "HeliType",  CHOICE, 1, { "Electric", "Nitro", "OMPHOBBY", "Auto" } },
   { "BattRsv",   VALUE, 20, 0, 50 },
   { "BattVoice", BOOL, 0 },
   { "RxPackMin", STRING, "6.60" },

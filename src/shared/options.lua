@@ -91,10 +91,19 @@ local function applyOptions(opts)
     -- RPM telemetry validates what a movement means; other sensors auto-detect.
     SRC.motorSwitch = opts.MotorSw or opts["Motor Switch"]
                       or defaultMotorSwitch
-    -- Heli Type CHOICE (1-based): Electric=1, Nitro=2, OMPHOBBY=3.
+    -- Heli Type CHOICE (1-based): Electric=1, Nitro=2, OMPHOBBY=3, Auto=4.
     -- OMPHOBBY shares the percentage bar but has its own telemetry contract.
     local bb = tonumber(opts.HeliType or opts["Heli Type"]) or 1
-    if not (bb >= 1 and bb <= 3) or bb > math.floor(bb) then bb = 1 end
+    if not (bb >= 1 and bb <= 4) or bb > math.floor(bb) then bb = 1 end
+    local automatic = bb == AUTO_HELI.option
+    if automatic then
+      bb = OPT.heliType == HELI_NITRO and HELI_NITRO or HELI_ELECTRIC
+      if not OPT.autoHeliType then
+        AUTO_HELI.ready, AUTO_HELI.name = false, nil
+        AUTO_HELI.status = "WAITING FOR FC NAME"
+      end
+    end
+    OPT.autoHeliType = automatic
     OPT.heliType = bb
     OPT.battBarMode = (bb == HELI_NITRO) and 1 or 0
     OPT.reservePct  = tonumber(opts.BattRsv or opts["Batt Reserve %"]) or 20

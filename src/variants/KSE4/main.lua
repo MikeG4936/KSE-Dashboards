@@ -597,6 +597,14 @@ end
 local function updateBottom()
   local B = V.bottom
   if not B then return end
+  if OPT.autoHeliType and not AUTO_HELI.ready then
+    setLabel(B.header, AUTO_HELI.status or "WAITING FOR FC NAME", C_YELLOW)
+    setVisible(B.fill, false)
+    setLabel(B.center, "AUTO · WAIT", C_YELLOW, B.x, B.textY, B.w,
+             G.fontBattery, CENTERED)
+    setVisible(B.center, true)
+    return
+  end
   local configWarning
   local rxSettingsInvalid = B.mode == "nitro" and not OPT.rxPackValid
   if not OPT.simTelemetry then
@@ -879,6 +887,7 @@ end
 -- This is the GX15 Dash RF Tool integration adapted to KSE4's responsive
 -- retained UI. RF Tool remains the sole transport and queue owner.
 -- @include shared:rf.lua
+-- @include shared:auto_heli.lua
 local function buildUi()
   if not lvgl then return end
   lvgl.clear()
@@ -926,7 +935,7 @@ local options = {
                              "Titanium Ember", "Aurora", "Desert Night" } },
   { "TxBatt",   CHOICE, 1, { "LiPo", "Li-Ion" } },
   { "MinFlight", VALUE, TOPBAR_MIN_DUR_DEFAULT, -30, 120 },
-  { "HeliType", CHOICE, 1, { "Electric", "Nitro", "OMPHOBBY" } },
+  { "HeliType", CHOICE, 1, { "Electric", "Nitro", "OMPHOBBY", "Auto" } },
   { "BattRsv", VALUE, 20, 0, 50 },
   { "BattVoice", BOOL, 0 },
   { "RxPackMin", STRING, "6.60" },

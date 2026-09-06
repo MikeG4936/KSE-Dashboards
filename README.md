@@ -154,6 +154,27 @@ A profile change is permitted only with confirmed disarm as described above. Gov
 
 Nitro has no battery profiles to load or change. RF Tool remains available for read-only arming-blocker diagnostics and, when selected, the Rotorflight FC flight counter. Nitro receiver-battery information comes from normal EdgeTX `Vbec` telemetry rather than a Rotorflight battery profile.
 
+### Auto helicopter type
+
+Select **Heli Type → Auto** in KSE4 or KSE5 to select Electric/Nitro behavior from the connected Rotorflight FC's name (`rf2.modelName`). KSE uses its existing RF Tool 2.3 host; no extra background script is needed. Rotorflight's **Set name on TX** option is optional for Auto detection.
+
+Matching ignores capitalization and surrounding whitespace:
+
+| FC name | Resolved type |
+| --- | --- |
+| `RAW 700N`, `RAW 700n`, `RAW Nitro`, `RAWNitro` | Nitro |
+| `RAW 700`, `RAW Electric`, `Nitro 700E` | Electric |
+
+Any name whose last character is `N` or whose suffix is `Nitro` selects Nitro; all other names select Electric. This is a literal suffix rule, so `Goblin` also selects Nitro. Use a name such as `Goblin 700` for an electric model.
+
+Auto waits for a live Rotorflight connection and a nonempty FC name that remains stable for at least 0.3 seconds. The battery display shows a waiting, confirming, or disconnected message until identification is ready. Type-dependent battery/ESC/BEC alerts, Electric battery-profile actions, and flight counting wait for identification; arming diagnostics continue only while fresh ARM telemetry confirms disarm. If the name never arrives, these actions remain paused and the waiting indication remains visible. Check the RF Tool installation and FC connection in that case.
+
+A changed name immediately invalidates the old identification before telemetry, alerts, or profile actions run. KSE invalidates old callbacks and removes pending requests it owns, while preserving active requests and unrelated work in RF Tool's shared queue. An already-active request can still finish or retry; check the connected aircraft's profile after recovery. Once the new name is confirmed, it resets session data even when both aircraft have the same type. UI rebuilding waits until the dashboard is visible. Brief RSSI dropouts retain the previous aircraft's warning latches when the RF Tool connection and name remain unchanged; a full RF reconnection starts a new session.
+
+Auto retains the last confirmed type and name while disconnected, so restoration of the transmitter's original name does not change the dashboard identity. In Auto, the confirmed FC name also supplies the dashboard title, image-name lookup, and KSE Counter CSV key. Use distinct FC names for separate aircraft counts. Changing an FC name changes its CSV key; previous entries are not renamed automatically. Theme and other unrelated settings edits preserve the resolved type.
+
+Auto currently selects only Electric or Nitro. Use the manual **OMPHOBBY** choice for OFS3/OFS3+ models. The existing manual choices and Electric default retain their saved values; existing installations must explicitly select Auto to enable it. Nitro's **Rx Pack Minimum** and **Rx Pack Maximum** settings still apply when Auto resolves to Nitro.
+
 ## KSE4 settings
 
 KSE4 provides these ten settings:
@@ -163,7 +184,7 @@ KSE4 provides these ten settings:
 | **Theme** | Dark | Selects the KSE4 color palette. Choices: Dark, Light, Transparent, Orange, Red, Blue, Pink, Green, Purple, Reef, Royal, Ember, Graphite, Glacier, Sunset, Synthwave, Gulf, Voltage, Transparent Light, Titanium Ember, Aurora, and Desert Night. This changes presentation only. |
 | **TX Battery** | LiPo | Selects the voltage mapping for the transmitter battery gauge: 2S LiPo or 2S Li-Ion. It does not affect the helicopter battery calculation. |
 | **KSE Counter Min (sec)** | 20 | Minimum Timer 1 elapsed time required by the KSE Counter. It does not change Rotorflight FC's own minimum armed-time setting. |
-| **Heli Type** | Electric | Selects Electric, Nitro, or OMPHOBBY telemetry and battery behavior. Electric supports Rotorflight battery profiles; Nitro uses receiver-pack voltage and has no battery profiles; OMPHOBBY uses its own telemetry names. |
+| **Heli Type** | Electric | Selects Electric, Nitro, OMPHOBBY, or Auto. Auto resolves Electric/Nitro from the connected FC name; see above. Electric supports Rotorflight battery profiles; Nitro uses receiver-pack voltage and has no battery profiles; OMPHOBBY uses its own telemetry names. |
 | **Batt Reserve %** | 20 | Re-scales Electric and OMPHOBBY flight-pack percentage so the selected reserve is displayed as 0%. Range: 0–50%. It does not affect Nitro. |
 | **Battery Voice** | Off | Enables the supplied percentage announcements for Electric/OMPHOBBY and critical `dead.wav` warnings. Safety haptics can still operate independently. |
 | **Rx Pack Minimum** | 6.60 | Nitro receiver-pack voltage represented as 0%. Valid minimum is at least 4.0 V. |
@@ -180,7 +201,7 @@ KSE5 provides the same functional settings with a different Theme list:
 | **Theme** | Dark | Selects from 22 palettes: Dark, Light, Arctic Blue, Midnight Violet, Orange, Red, Blue, Pink, Green, Purple, Reef, Royal, Ember, Graphite, Glacier, Sunset, Synthwave, Gulf, Voltage, Titanium Ember, Aurora, or Desert Night. This changes presentation only. |
 | **TX Battery** | LiPo | Selects the voltage mapping for the transmitter battery gauge: 2S LiPo or 2S Li-Ion. It does not affect the helicopter battery calculation. |
 | **KSE Counter Min (sec)** | 20 | Minimum Timer 1 elapsed time required by the KSE Counter. It does not change Rotorflight FC's own minimum armed-time setting. |
-| **Heli Type** | Electric | Selects Electric, Nitro, or OMPHOBBY telemetry and battery behavior. Electric supports Rotorflight battery profiles; Nitro uses receiver-pack voltage and has no battery profiles; OMPHOBBY uses its own telemetry names. |
+| **Heli Type** | Electric | Selects Electric, Nitro, OMPHOBBY, or Auto. Auto resolves Electric/Nitro from the connected FC name; see above. Electric supports Rotorflight battery profiles; Nitro uses receiver-pack voltage and has no battery profiles; OMPHOBBY uses its own telemetry names. |
 | **Battery Reserve %** | 20 | Re-scales Electric and OMPHOBBY flight-pack percentage so the selected reserve is displayed as 0%. Range: 0–50%. It does not affect Nitro. |
 | **Battery Voice** | Off | Enables the supplied percentage announcements for Electric/OMPHOBBY and critical `dead.wav` warnings. Safety haptics can still operate independently. |
 | **Rx Pack Minimum** | 6.60 | Nitro receiver-pack voltage represented as 0%. Valid minimum is at least 4.0 V. |
@@ -290,7 +311,7 @@ The supplied `default.png` is used when no model-specific image is found. Custom
 
 Smaller images are acceptable and will be scaled to fit the available image area. Do not use an image that exceeds either limit; oversized images consume additional radio memory and may reduce interface performance or fail to load reliably. Images that exceed these limits or have invalid PNG/BMP headers are skipped; the next fallback image or a placeholder appears instead.
 
-For a custom image, place a PNG or BMP in `/IMAGES/` using the EdgeTX model name as the filename:
+For a custom image, place a PNG or BMP in `/IMAGES/` using the EdgeTX model name in manual modes, or the confirmed FC name in Auto, as the filename:
 
 ```text
 Model name: Goblin RAW
@@ -319,7 +340,7 @@ The filename must be exactly `default.png`; leaving the alternate image named `d
 | Rotorflight FC count is unavailable | Confirm RF Tool 2.3, current, fresh disarmed `ARM` telemetry, enabled Rotorflight model statistics, and the complete `/SCRIPTS/RF2/` directory. RF Tool must also report a ready, non-armed state. |
 | Nitro battery is missing | Nitro uses `Vbec`; it does not load a battery profile. |
 | Top-bar `Profile / Rate` indicator is missing | Confirm a live telemetry link and discover both `PID#` and `RTE#`. The indicator remains hidden unless both values are valid. |
-| Model image is missing | Match the EdgeTX model name and `/IMAGES/` filename, including capitalization. |
+| Model image is missing | Match the `/IMAGES/` filename to the EdgeTX model name in manual modes, or the confirmed FC name in Auto, including capitalization. |
 | Telemetry fields show `--` or `NO DATA` | Re-discover sensors and confirm the exact case-sensitive names above. If needed, try pasting the CLI command above for telemetry sensors. |
 
 ## Acknowledgments
@@ -335,3 +356,7 @@ KSE4 and KSE5 are maintained together so functional and safety changes can be ap
 Use these dashboards entirely at your own risk. They are provided as-is, without warranties or guarantees of any kind. The author assumes zero liability for injury, crashes, loss of a model, property damage, data loss, incorrect telemetry, missed or incorrect warnings, configuration errors, software failure, or any other direct or indirect consequence arising from their installation, use, or misuse. You are solely responsible for verifying your radio, model, telemetry, alarms, motor safety, and failsafe configuration and for performing appropriate motor-disabled bench testing before flight.
 
 Technical support is offered on a friendly, best-effort basis. I will help where my time and knowledge allow, but support may be limited and a response or resolution cannot be guaranteed. This project is not operated as a formal help desk or ticket-based support service, so users are encouraged to follow this guide carefully and share clear details when asking for help.
+
+### Auto regression checks
+
+See [Auto lifecycle checks](tests/auto_type/README.md) for the reproducible EdgeTX-core test command. The checks execute both generated widgets with mocked radio, RF Tool, and LVGL boundaries. The [MSP admission suite](tests/msp_admission/README.md) separately uses the pinned RF Tool queue. Transmitter testing is still needed to verify the real UI and transport integration.
