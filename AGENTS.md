@@ -21,6 +21,12 @@ One primary agent owns the shared engine and integrates both generated dashboard
 - Require valid, current and fresh ARM bit 0 disarmed, a live link and ready provider, with no armed host contradiction, before every KSE MSP admission and profile-operation stage. Governor/headspeed do not restrict MSP admission; rotation does not block requests when disarm is confirmed. Add no extra disarm-settle gate; preserve existing FC-count and connection/rate intervals. Invalidate stale callbacks and remove safely identifiable pending owned work across arming, link loss, model/provider change and reset. Preserve active upstream transactions and foreign work; do not claim per-send cancellation through the unmodified RF Tool API.
 - Treat EdgeTX's Lua implementation and official Rotorflight source as compatibility authorities. Verify APIs, MSP layouts and telemetry semantics against identified versions; carry relevant commit-pinned citations into the change explanation.
 
+## Commit messages
+
+Start every commit with a plain-language title and opening paragraph explaining the problem, the change and its practical purpose. Kyle should be able to judge whether the commit belongs upstream without reading code or knowing internal names. Lead with the effect on dashboard users; for tooling or maintenance work, explain what it makes safer or easier to maintain.
+
+Put implementation details, source citations, test results and limitations after that summary. Describe the commit as it stood at that point in history. When revising an earlier decision, identify the earlier commit and explain what is being walked back and what remains; distinguish a partial walk-back from a full revert.
+
 ## Completion and resource discipline
 
 Create compiler headroom before expanding helper-heavy code. Apply the review's resource gates to every compiled function in both outputs; distinguish project margins from upstream hard limits. Keep the checker and regression fixtures reproducible from a fresh checkout rather than depending on temporary audit files.
