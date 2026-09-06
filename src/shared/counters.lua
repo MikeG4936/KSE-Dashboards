@@ -436,7 +436,7 @@ updateMotorAlertGate = function(now, governorMode, headRpm)
   end
 end
 local function tickFlightCount()
-  if OPT.simTelemetry then return end
+  if OPT.simTelemetry or (OPT.autoHeliType and not AUTO_HELI.ready) then return end
   local thisModel = modelKey(getModelName())
   if flightModel ~= thisModel then
     flightModel = thisModel

@@ -22,7 +22,7 @@ Dashboard evidence: [shared sensor mapping and readers](../src/shared/telemetry.
 | 60 | Headspeed → `Hspd` | Keep | Main RPM, maximum RPM, motor-alert evidence. |
 | 61 | Tail speed → `Tspd` | Keep for common setup | KSE4 tail-speed display; KSE5 has no tail-speed tile. |
 | 89 | Flight mode → `Mode` | Optional | No KSE reader. Separate from `ARM` and `Gov`. |
-| 88 | Model ID → `MDL#` | Optional | KSE model name comes from EdgeTX; the host obtains FC name through MSP. |
+| 88 | Model ID → `MDL#` | Optional | Manual KSE modes use the EdgeTX model name; Auto uses the host's FC name obtained through MSP, not `MDL#`. |
 | 93 | Governor state → `Gov` | Keep | Governor display and motor-alert evidence. |
 | 15 | Throttle control → `Thr` | Optional | KSE Motor Switch uses the selected radio switch, not this value. |
 | 3 | Battery voltage → `Vbat` | Keep | Electric pack voltage/validity and connected-pack evidence. |
@@ -60,11 +60,13 @@ Dashboard evidence: [shared sensor mapping and readers](../src/shared/telemetry.
 
 These similar-looking names are not interchangeable: `Curr` is Rotorflight's battery-current result, `Vbec` is its selected BEC meter, and `Tesc` is its combined ESC temperature. Removing transmission of `EscI`/`BecV`/`EscT` does not remove the underlying ESC input used to calculate retained values. **Keep the FC's ESC telemetry acquisition, voltage/current sources and governor settings intact.** Only change the radio telemetry selection. [Firmware value providers](https://github.com/rotorflight/rotorflight-firmware/blob/118e9120260bb33f46df4f92052fb0e9fd4e9ebc/src/main/telemetry/sensors.c#L159-L253).
 
-ELRS link statistics (`RQly`/`LQ`, `RSSI`, `TPWR`, `RFMD`) are separate from this FC sensor list. Transmitter voltage, the selected motor switch, model name and Timer 1 are radio-local. None requires an extra `telemetry_sensors` selector. OMPHOBBY's receiver telemetry contract is separate; these Rotorflight CLI commands do not apply to it.
+ELRS link statistics (`RQly`/`LQ`, `RSSI`, `TPWR`, `RFMD`) are separate from this FC sensor list. Transmitter voltage, the selected motor switch, the manual modes' model name and Timer 1 are radio-local. Auto uses the FC name already obtained by RF Tool through MSP. None requires an extra `telemetry_sensors` selector. OMPHOBBY's receiver telemetry contract is separate; these Rotorflight CLI commands do not apply to it.
 
 ### RF Tool and feature preservation
 
 Retain `ARM`: the KSE admission gate requires current, fresh ARM bit 0 to confirm disarm. Ordinary Lua reads consume values already held by EdgeTX; they do not request each value via MSP. `Gov` and `Hspd` remain needed for instruments/motor alerts, despite their removal from MSP admission conditions. The current arming-blocker banner uses `mspStatus`, so removing `ARMD` reporting does not remove that banner. PID/rate/battery profile telemetry is still needed during flight; the ground MSP operations are not a substitute for it.
+
+On the personal branch, Auto helicopter type preserves the same telemetry requirements. It consumes `rf2.modelName` from the host's existing [MSP name initialization](https://github.com/rotorflight/rotorflight-lua-scripts/blob/aaacfe68407c09d49a26c5aa326c00119b378bb0/src/SCRIPTS/RF2/background_init.lua#L130-L156); it does not depend on `MDL#`, require **Set name on TX**, or add KSE name-polling requests. The [Auto confirmation and lifecycle contract](KSE4-KSE5-optimization-review.md#auto-helicopter-type-integration-contract) still applies with the smaller sensor list.
 
 RF Tool's Adjustment Teller consumes `AdjF`/`AdjV`. Retaining selector 99 follows the official instruction to enable Adjustment Function with custom telemetry. There is no need to modify RF Tool or use a special KSE decoder for the smaller selection. [Official RF Lua setup](https://rotorflight.org/docs/setup/radio-setup/radio-setup-edgetx/edgetx-lua-scripts).
 
@@ -88,7 +90,7 @@ save
 
 KSE resolves sensors by name, not FC list position; compaction needs no dashboard-code change. Deleting/rediscovering EdgeTX sensors does not reset FC intervals or recreate overrides that were explicitly reset. RF Tool startup reads telemetry configuration rather than restoring custom intervals. [KSE name resolution](../src/shared/telemetry.lua), [RF Tool configuration read](https://github.com/rotorflight/rotorflight-lua-scripts/blob/aaacfe68407c09d49a26c5aa326c00119b378bb0/src/SCRIPTS/RF2/background_init.lua#L125-L155).
 
-After saving, reconnect/restart the RF host and discover any missing sensors. Verify required values are live, including `ARM`, and check both dashboards' instruments, warnings, profile indicators, ground profile operations, diagnostic banner, chosen counter and RF adjustment announcements. Removing an EdgeTX sensor from the radio's discovery list alone does not change the FC's configured stream. Conversely, old discovered names can remain listed after their transmission stops; confirm current values rather than relying on their names being present. Preserve radio source assignments instead of indiscriminately deleting all sensors.
+After saving, reconnect/restart the RF host and discover any missing sensors. Verify required values are live, including `ARM`, and check both dashboards' instruments, warnings, profile indicators, ground profile operations, diagnostic banner, chosen counter and RF adjustment announcements. In Auto, also confirm Electric/Nitro identification with transmitter naming disabled, then check name changes and reconnects before using the model. Removing an EdgeTX sensor from the radio's discovery list alone does not change the FC's configured stream. Conversely, old discovered names can remain listed after their transmission stops; confirm current values rather than relying on their names being present. Preserve radio source assignments instead of indiscriminately deleting all sensors.
 
 The README contains the selected configuration; no FC settings have been applied by this repository change, and the dashboard/RF Tool Lua code is unchanged.
 

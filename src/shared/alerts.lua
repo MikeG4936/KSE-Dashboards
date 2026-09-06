@@ -500,7 +500,8 @@ local function tick(nowT)
                        + (D.adjustedPercent - A.displayPercent)
                          * SAFETY.displayPercentAlpha
   end
-  if not OPT.simTelemetry then
+  local modeReady = not OPT.autoHeliType or AUTO_HELI.ready
+  if not OPT.simTelemetry and modeReady then
     -- A raw switch move is never enough to silence a warning. Rotorflight must
     -- corroborate it with Gov or Hspd; OMPHOBBY uses stopped RPM telemetry.
     updateMotorAlertGate(nowT, governorMode, headRpm)
@@ -522,7 +523,7 @@ local function tick(nowT)
   end
   if OPT.battBarMode == 1 then
     local rx = sensors.getRxBatt()
-    if not OPT.simTelemetry then
+    if not OPT.simTelemetry and modeReady then
       updateRxPackAlert(rx)
       BATTERY_VOICE.updateRxDead(OPT.battVoice, rx)
     end

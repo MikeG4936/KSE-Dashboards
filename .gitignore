@@ -128,3 +128,11 @@
 !/tests/render/*.py
 !/tests/render/*.lua
 !/tests/render/README.md
+
+!/src/shared/auto_heli.lua
+
+!/tests/auto_type/
+/tests/auto_type/*
+!/tests/auto_type/*.py
+!/tests/auto_type/*.lua
+!/tests/auto_type/README.md

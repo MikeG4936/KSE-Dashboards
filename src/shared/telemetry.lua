@@ -49,7 +49,7 @@ local function getModelName()
   local v = F.modelName
   if v ~= nil then return v end
   local info = getModelInfo()
-  local n = info and info.name or nil
+  local n = OPT.autoHeliType and AUTO_HELI.name or (info and info.name or nil)
   if not n or n == "" then n = "MODEL" end
   v = (string.gsub(n, ",", " "))
   F.modelName = v

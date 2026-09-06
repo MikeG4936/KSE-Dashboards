@@ -33,7 +33,7 @@ def instrument(source):
         "showBatteryProfileMenu=function() return false end\n") + source[boundary:]
     source = source.replace(marker, exports + marker)
     pos = source.rindex("\nreturn {")
-    return source[:pos] + source[pos:].replace("return {", "return { audit={OPT=OPT, FC=FC, profiles=batteryProfiles, owner=WidgetOwner},", 1)
+    return source[:pos] + source[pos:].replace("return {", "return { audit={OPT=OPT, FC=FC, AUTO_HELI=AUTO_HELI, profiles=batteryProfiles, owner=WidgetOwner},", 1)
 
 
 def main():
