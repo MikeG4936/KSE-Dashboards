@@ -1116,7 +1116,7 @@ local function playBatteryRemainingAlert(level)
 end
 local function playBatteryHaptic()
   if not playHaptic then return end
-  local modeNow = rawget(_G, "PLAY_NOW") or 0
+  local modeNow = _G.PLAY_NOW or 0
   pcall(playHaptic, 15, 0, modeNow)
 end
 local function resetBatteryAlertState(scope)

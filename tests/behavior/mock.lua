@@ -1,3 +1,8 @@
+-- Emulate the firmware ROM-backed global constant lookup.
+do
+  local inherited = getmetatable(_G).__index
+  getmetatable(_G).__index = setmetatable({PLAY_NOW=16}, {__index=inherited})
+end
 -- Minimal public EdgeTX API surface; no desktop Lua I/O or package loader.
 __mock = {now=0, values={}, files={}, events={}, timer={value=0,start=0}, modelName="Fixture"}
 LCD_W=800; LCD_H=480
@@ -38,7 +43,6 @@ close=function() end}
 playNumber=function(value) __mock.events[#__mock.events+1]="voice:"..tostring(value) end
 playFile=function(path) __mock.events[#__mock.events+1]="file:"..string.match(path,"[^/]+$") end
 playHaptic=function(length,pause,flags)
-  -- Timing/count are asserted. ROM constant lookup is a separate known fix;
-  -- do not turn the current PLAY_NOW defect into a desired baseline contract.
+  __mock.hapticFlags=flags
   __mock.events[#__mock.events+1]="haptic:"..tostring(length)
 end

@@ -186,7 +186,9 @@ The KSE Counter is stored per model in `/flights-count.csv` at the root of the S
 
 1. Configure Timer 1 to run from the appropriate motor-active condition.
 2. Set **KSE Counter Min (sec)** to the desired qualification time.
-3. After Timer 1 has reached that duration, resetting Timer 1 counts one KSE flight.
+3. A KSE flight is counted when elapsed time first reaches that duration. Reset Timer 1 below the threshold to allow the next flight to count.
+
+Countdown timers use their start value minus their current value as elapsed time. Attaching the dashboard when Timer 1 is already above the threshold does not add a flight until a new qualifying cycle.
 
 The widget does not configure, start, stop, or reset Timer 1 for you.
 
