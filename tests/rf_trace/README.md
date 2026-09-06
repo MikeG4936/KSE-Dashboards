@@ -1,9 +1,11 @@
 # RF trace characterization
 
+This is a historical structural-refactor fixture. Current scheduling regressions live in [tests/msp_admission](../msp_admission/README.md); intentional admission changes no longer match these unsafe baseline traces. To reproduce the old comparison, supply a candidate tree from commit `5d536cd` or earlier, together with the corresponding pre-refactor baseline.
+
 This tool compares 14 transaction traces before and after structural changes. It uses the actual queue, helper and status/flight-stat APIs from Rotorflight Lua commit `aaacfe68407c09d49a26c5aa326c00119b378bb0`, loaded from a supplied Git checkout. The common transport and radio callbacks are mocked. No upstream source is vendored or loaded from an undocumented audit directory.
 
 ```sh
-python3 tests/rf_trace/run.py --runner ../kse-edgetx-build/edgetx-run --rf-source ../rotorflight-lua-scripts --baseline-dir ../kse-baseline
+python3 tests/rf_trace/run.py --runner ../kse-edgetx-build/edgetx-run --rf-source ../rotorflight-lua-scripts --baseline-dir ../kse-baseline --candidate-dir ../kse-before-admission
 ```
 
 Build the runner using [the compiler instructions](../../tools/edgetx/README.md). Prepare the baseline tree as described in [the behavior fixtures](../behavior/README.md). Each baseline must contain `KSE4/main.lua` and `KSE5/main.lua`.

@@ -2,11 +2,23 @@
 
 Design review dated 2026-09-05 for slices 2/3 of the [implementation plan](implementation-plan.md). This records an integration constraint discovered while verifying the original audit, not an implemented scheduling guarantee. RF Lua baseline: `aaacfe68407c09d49a26c5aa326c00119b378bb0`; EdgeTX baseline: `1511b3f29152f18c704f1f89b3608e0f71317de9`. Dashboard line references are pre-primary-refactor KSE4/main.lua.
 
-## Decision
+## Accepted decision: unmodified RF Tool, admission-only control
 
-A complete adapter cannot safely retrofit an **already loaded, unmodified external RF Tool** using the public API in this pinned release. The required per-send/per-fragment/per-retry ownership check and mixed receive demultiplexing hooks are absent. Admission checks and operation callback generations are necessary but insufficient. This is a genuine integration gate for slice 2 and dependent slice 3, not an invitation to ship an admission-only flight-safety claim.
+The user selected **stopping new KSE-owned MSP admission unless disarm is confirmed while leaving RF Tool unmodified**. This applies to embedded and already-loaded external hosts. Confirmed-disarm evidence is checked before each new request or profile-operation stage; losing that evidence invalidates continuation callbacks and permits removal of safely identifiable pending owned entries. Foreign requests and active upstream transport state remain intact.
 
-A scoped, versioned adapter is implementable when installed **before** the provider loads its queue and telemetry decoder. It requires a narrow interception of the provider's module loader or explicit upstream dependency-injection hooks; it need not replace global `crossfireTelemetryPush`, global `crossfireTelemetryPop`, or queue methods. Cold-start-only compatibility is materially narrower than the current external-host contract. Disabling KSE requests against an already-loaded external host is safe but defers profile configuration, diagnostics, and FC flight-count refresh and therefore is not full feature-preserving completion.
+Every KSE MSP request requires valid, current and fresh ARM bit 0 disarmed, a live link, a ready provider and no armed host contradiction. `Gov` and `Hspd` are neither sampled nor restricted for admission: rotation does not block requests when disarm is confirmed. There is no extra 40-tick (0.4-second) settle gate. Preserve the existing FC-count post-disarm settle of 150 ticks and unrelated connection/rate intervals.
+
+An already-active request may continue sending fragments and retrying indefinitely under the pinned upstream queue policy. This includes a request admitted before arming, link loss, model/provider change or reset. Callback invalidation prevents new KSE stages and stale UI updates; it cannot retract an active request or guarantee that it will not mutate the FC later. The user accepts this boundary. It is neither a per-send safety guarantee nor a guarantee of zero in-flight MSP traffic, and no latency improvement has been measured.
+
+Normal telemetry, Smart Fuel, instruments, alerts, counters and telemetry-driven profile indicators continue. Clear the pre-arm blocker banner whenever confirmed-disarm evidence is unavailable; fresh diagnostics, ground configuration and post-flight FC count reads resume after confirmed-disarm recovery. Preserve official RF Tool initialization, recovery, page activity and queue ownership.
+
+No integration patch or further approval is required for the selected scope. The alternatives below document what stronger per-send cancellation and mixed-frame demultiplexing would require; they are historical design evidence, not prerequisites for the admission-only implementation.
+
+## Historical feasibility finding for stronger transport guarantees
+
+A complete adapter cannot safely retrofit an **already loaded, unmodified external RF Tool** using the public API in this pinned release. The required per-send/per-fragment/per-retry ownership check and mixed receive demultiplexing hooks are absent. Admission checks and operation callback generations are insufficient for that stronger guarantee.
+
+A scoped, versioned adapter is implementable when installed **before** the provider loads its queue and telemetry decoder. It requires a narrow interception of the provider's module loader or explicit upstream dependency-injection hooks; it need not replace global `crossfireTelemetryPush`, global `crossfireTelemetryPop`, or queue methods. Cold-start-only compatibility is materially narrower than the external-host contract. This approach was not selected.
 
 ## Primary source references
 
@@ -24,7 +36,7 @@ A scoped, versioned adapter is implementable when installed **before** the provi
 - EdgeTX `radio/src/lua/api_general.cpp:895–912` selects FIFO by current script manager, and `:1153–1179` destructively pops it. Calling another widget's Lua method does not select that widget's manager. Two widget managers are not interchangeable receive contexts.
 - KSE4 `profileServiceEmbeddedRfTool:3563–3614` presently skips telemetry background while pending. `profileCancelOperationQueue:3722–3735` refuses cancellation with any foreign queue message. `profileBeginOperation:4427–4510` prequeues set, verify, save. These are separate faults; none repairs the missing send/receive hooks.
 
-## Required upstream interface (preferred)
+## Historical alternative: explicit upstream interface
 
 The smallest supported change is an explicit provider adapter contract, versioned beyond existing `rfToolApiVersion=1.00`:
 
@@ -36,7 +48,7 @@ The smallest supported change is an explicit provider adapter contract, versione
 
 Upstream explicit hooks also avoid relying on private queue tables and a loader interception contract that upstream does not promise.
 
-## Pre-initialization adapter alternative (implementable with narrower boundary)
+## Historical alternative: pre-initialization adapter with narrower boundary
 
 After hidden `app.lua` factory initialization creates `rf2`, before `app.lua:99–107` loads the queue/background, install a provider-scoped loader interceptor for exactly `MSP/crsf` and `rf2tlm`. Load the original pinned modules in separate environments inheriting `_G`, substituting only each module's `crossfireTelemetryPop` and the MSP module's `crossfireTelemetryPush`. `rf2.loadScript` itself is the interception point; non-target names call its original function. No second MSP/common stack and no duplicate decoder copy are necessary.
 
@@ -50,7 +62,9 @@ For current-owned cancellation under the pinned queue implementation, retain/fil
 
 External providers already holding private queue/decoder closures cannot be retrofitted through these future-load environments. Replacing an idle queue alone leaves the existing decoder in `background.lua`'s private closure, which still consumes raw MSP frames. A supported clean restart/reinitialization or upstream hooks are required.
 
-## Operation model once hooks exist
+## Historical operation model if stronger hooks are introduced
+
+The stopped-governor/zero-headspeed policy in this historical alternative was superseded by the confirmed-disarm policy above, including for profile writes.
 
 - One recorded provider, queue, owner epoch, model/type generation per operation. Capture exact message identities from API insertion before yielding.
 - Ground admission and send guard use the same strict sample policy: positively current/fresh ARM-disarmed, recognized stopped governor and zero headspeed, no contradictory host state; missing/invalid/unknown evidence denies owned sends. Use normal telemetry, not a fresh MSP request, to establish permission.
@@ -60,15 +74,27 @@ External providers already holding private queue/decoder closures cannot be retr
 - Keep host heartbeat, ARM tracking, receive-side telemetry and official initialization/recovery servicing active. In-flight suppression applies only to KSE owned messages.
 - Clear stale arming-blocker banner when leaving safe ground; retain last confirmed FC count and telemetry-driven indicators; resume diagnostics and post-flight reads after stable safe-ground recovery.
 
-## Safe independent work before integration gate
+## Applicable lifecycle work under the accepted boundary
 
 - Move Nitro/Electric operation deadline checks into common service and align reset entry points.
 - Record model/provider/owner generations and invalidate callback side effects on every reset/replacement.
 - Filter not-yet-current owned queue entries by identity without altering a foreign current transaction.
-- Retain unresolved owned current transactions instead of forgetting them when cancellation cannot be completed. Do not claim this retention itself stops transmissions.
-- Add duplicate ownership checks before `create`/`update` mutates shared module options/state. Weak references alone are insufficient if RF Tool's widget registration strongly retains callbacks. A lease/epoch design must recheck ownership at every callback and provide delayed recreation takeover without a permanent global lock. RF work outstanding across takeover still needs the send guard; duplicate UI/state guarding alone is independently useful.
+- Leave unresolved active transactions in RF Tool's queue with their callbacks invalidated; KSE deadlines release local bookkeeping only. Preserve message identity for attribution and test the accepted continuing retry behavior. Clearing local operation state does not cancel transport work.
+- Add duplicate ownership checks before `create`/`update` mutates shared module options/state. Weak references alone are insufficient if RF Tool's widget registration strongly retains callbacks. A lease/epoch design must recheck ownership at every callback and provide delayed recreation takeover without a permanent global lock. RF work already active across takeover remains subject to upstream retries; duplicate UI/state guarding does not stop that traffic.
 
-## Acceptance probes
+## Acceptance probes for the selected policy
+
+- Exercise every KSE request admission and profile continuation stage in Electric and Nitro, foreground and background. Armed, missing/stale/invalid ARM or contradictory host evidence must prevent new admissions; diagnostics and post-flight reads resume after confirmed-disarm recovery.
+- Verify rotating, running-governor, missing `Gov`/`Hspd` and stale `Gov`/`Hspd` cases admit requests when ARM confirms disarm. Verify no added 40-tick settle while preserving the FC-count 150-tick wait and unrelated connection/rate intervals.
+- Invalidate operations at arming, link loss, model/provider change, reset and ownership takeover. Assert no stale callback admits a new stage or updates a new operation. Pending owned removal preserves foreign identity/order and active upstream framing.
+- Reproduce an already-active request continuing fragments/retries after KSE invalidation, including dropped replies and upstream unlimited retry behavior. Attribute that residual traffic separately; do not count it as a failed admission gate or claim KSE cancelled it.
+- Verify ongoing telemetry, alerts, host heartbeat/recovery and last confirmed FC count; clear the pre-arm banner without confirmed disarm. Cover embedded and already-loaded external hosts. Record mixed-frame consumption limitations without claiming a demultiplexing fix.
+- Run compiler/resource and parity checks, then record outstanding real-radio traffic, memory and timing checks. Software probes establish only their tested scope.
+
+## Historical acceptance probes for a stronger adapter
+
+These probes apply only if a future task adopts the stronger transport adapter; they are not gates for the accepted admission-only scope.
+
 
 1. Mixed addressed MSP, custom telemetry and unrelated frames in both orders, fragmented responses and delayed/dropped replies; assert original custom decoder updates ARM/Hspd/Bat% through waits and counters are not duplicated across manager FIFOs.
 2. Own pending behind foreign current, own current with foreign pending, foreign pending on both sides; cancel before first send, between fragments, before retry, after set ACK, after verify, before save. Foreign identities/order and active framing survive.

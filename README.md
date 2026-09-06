@@ -7,7 +7,7 @@ KSE4 and KSE5 are full-screen EdgeTX telemetry dashboards for RC helicopters. Th
 
 Both dashboards use an **800 × 480 design reference** and scale their layouts to the actual radio screen or widget zone, including 480 × 320 and 480 × 272 displays. This shared reference does not require an 800 × 480 radio; each dashboard retains its own layout, proportions, and EdgeTX font choices.
 
-Choose the version whose layout you prefer. Both versions can be installed on the same radio, but only one needs to be added to a telemetry screen. Do not have multiple screens setup at one time, please choose one or the other when setting up your screen. Using them at the same time on separate can create issues and cause your radio to go into Emergency Mode.
+Choose the version whose layout you prefer. Both folders can be installed on the same radio, but configure only one KSE widget instance across all telemetry screens. Duplicate-instance protection is not implemented; multiple instances share state and are unsupported.
 
 > **Safety:** These widgets are informational aids. They do not replace correctly configured radio alarms, motor safety, telemetry-loss warnings, or failsafe settings. Bench-test a new installation with the motor physically unable to start before flying.
 
@@ -79,7 +79,7 @@ KSE5 -> /WIDGETS/KSE5/
 
 Keep `main.lua`, the image files, and the complete `BatterySounds` folder together. Do not rename the KSE4 or KSE5 folder because the widget uses absolute paths for its images and sounds.
 
-If you plan to use **KSE Counter**, also copy the repository's `flights-count.csv` to the root of the transmitter SD card as `/flights-count.csv`. Both dashboards share that one file and store counts by model name. The Rotorflight FC counter does not use it.
+For a first **KSE Counter** installation with no existing history, copy the repository's `flights-count.csv` to the root of the transmitter SD card as `/flights-count.csv`. When upgrading, preserve your existing file and back up any `.bak` and `.tmp` companions; do not overwrite your history with the starter CSV. Both dashboards share that one file and store counts by model name. The Rotorflight FC counter does not use it.
 
 You may install both folders if you want to compare the two layouts on the radio.
 
@@ -103,9 +103,18 @@ With the motor disconnected or otherwise physically unable to start, verify:
 - The selected Motor Switch is the actual physical switch.
 - Battery warnings and haptics behave as expected.
 - The top bar shows the active PID and rate profiles while connected and clears them after disconnect.
-- Electric battery-profile changes are blocked while armed, while the governor is running, or while headspeed is present.
+- Electric battery-profile changes are blocked while armed or when current, fresh disarmed ARM evidence is unavailable. Governor state and headspeed do not block MSP requests when disarm is confirmed.
 - The selected flight counter updates according to its documented behavior.
 - Confirm that Timer1 is setup with the motor switch - this is configured in EdgeTX completely separate from KSE Dashboard.
+
+For this update, also check the following on the radio, testing one dashboard at a time:
+
+- With a known arming blocker present, the diagnostic banner appears while disarmed, clears after successful arming, and resumes when disarmed again if a blocker remains. Head-speed, battery, and link displays continue updating while armed.
+- Select a configured battery profile while disarmed. Confirm the saved indication and verify the selection survives an FC restart. Test the picker buttons and close action at your radio's resolution.
+- For the Rotorflight counter, compare the displayed total with RF Tool after a qualifying arm/disarm cycle. For KSE Counter, cross the Timer 1 threshold, allow the save to finish, and confirm the count survives a normal radio restart.
+- Check haptics, voice, model-image rendering, and foreground/background operation. During profile loading and reconnects, watch for frozen telemetry or a dashboard that fails to recover.
+
+Record the radio model, EdgeTX and RF Tool versions, dashboard, helicopter type, and counter choice with any result. Physical operation, memory, callback timing and RF latency still need radio validation; passing desktop fixtures does not establish those results.
 
 ## RF Tool behavior by model type
 
@@ -118,6 +127,18 @@ With the motor disconnected or otherwise physically unable to start, verify:
 | OMPHOBBY + KSE Counter | No | No | No | No |
 
 Normal dashboard telemetry comes directly from EdgeTX telemetry sensors. RF Tool is used for the additional FC-side operations shown above.
+
+For OMPHOBBY, select **KSE Counter**. The Rotorflight counter remains selectable in widget settings, but that pairing is unsupported and may start an unnecessary RF Tool host.
+
+### KSE MSP scheduling during flight
+
+All new KSE MSP requests require confirmed disarm: valid, current and fresh `ARM` bit 0 must indicate disarmed, the link must be live, RF Tool must be ready, and its host state must not report armed. Armed, stale, missing or contradictory evidence pauses new diagnostics, configuration requests and FC-count reads. The pre-arm blocker banner clears when disarm cannot be confirmed; fresh diagnostics and post-flight count updates resume after confirmation returns.
+
+Discover and retain `ARM`. KSE requires EdgeTX's `getSourceValue` to report that sample explicitly current and fresh. Governor state and headspeed are not sampled for MSP admission: rotation does not block a request when disarm is confirmed. There is no extra 0.4-second settle wait. The existing FC-count post-disarm wait of 150 ticks (1.5 seconds) and connection/rate intervals still apply. Older value-only telemetry APIs remain usable for displays but cannot authorize these MSP requests.
+
+Normal telemetry, Smart Fuel, flight instruments, alerts, local counters and telemetry-driven profile indicators continue. The last confirmed FC count and loaded profile capacities remain available; starting the dashboard while armed or without valid ARM telemetry may leave FC configuration/count details unavailable until disarm is confirmed.
+
+Use the unmodified official RF Tool package. Its own initialization, recovery and page requests continue. A KSE request already active in RF Tool can keep sending fragments or retrying indefinitely after KSE stops admitting work. This policy does not guarantee zero in-flight MSP traffic or cancellation before every send, and it does not claim a measured latency improvement.
 
 ### Top-bar PID/rate-profile indicator
 
@@ -136,9 +157,11 @@ This indicator is display-only. It reads normal EdgeTX telemetry and does not ad
 
 ### Electric battery profiles
 
-Battery profiles are available only in Electric mode. After RF Tool connects, KSE reads the active Rotorflight battery profile and all six configured capacities. The picker lists only profiles with a positive configured capacity; zero-capacity profiles are treated as not configured. If no profiles are configured, the picker reports that instead of offering an invalid choice. If exactly one profile has a positive configured capacity, KSE can select it automatically.
+Battery profiles are available only in Electric mode. After RF Tool connects and disarm is confirmed, KSE reads the active Rotorflight battery profile and all six configured capacities. The picker lists only profiles with a positive configured capacity; zero-capacity profiles are treated as not configured. If no profiles are configured, the picker reports that instead of offering an invalid choice. If exactly one profile has a positive configured capacity, KSE can select it automatically.
 
-A profile change is permitted only when the model is disarmed, the governor is stopped, and headspeed is zero. KSE writes the requested profile, reads it back from the FC, and saves it to FC memory before displaying it as confirmed.
+KSE checks confirmed-disarm evidence before admitting a profile change and each subsequent read-back/save stage. KSE writes the requested profile, verifies it from the FC, and saves it to FC memory before displaying it as confirmed. Losing confirmed-disarm evidence stops new stages, but an already-active request remains subject to RF Tool's retries as described above.
+
+On compact screens, KSE4 uses the native menu when available and falls back to a fitted dialog. Both dashboards report `UPDATE EDGETX FOR PROFILE PICKER` if the required UI APIs are unavailable.
 
 ### Nitro mode
 
@@ -233,13 +256,13 @@ After the controller saves and reconnects, return to the model's Telemetry page 
 | Sensor | Purpose |
 | --- | --- |
 | `RQly`, `RQLY`, or `LQ` | Link-quality display and connection evidence. |
-| `ARM` | Armed/disarmed safety state for the Rotorflight FC counter and profile-change checks. |
+| `ARM` | Armed/disarmed evidence for all KSE MSP requests, including diagnostics, FC-count reads and profile changes. |
 
 ### Rotorflight Electric and Nitro
 
 | Sensor | Purpose |
 | --- | --- |
-| `Hspd` | Main headspeed, maximum headspeed, and Electric stopped-rotor proof. |
+| `Hspd` | Main headspeed, maximum headspeed, and Electric motor-alert stopped-rotor proof. |
 | `Tspd` | Tail-rotor speed display. |
 | `Vbec` | Electric BEC voltage or Nitro receiver-pack voltage. Nitro battery percentage and warnings use this sensor. |
 | `Vcel` | Electric cell voltage and minimum-cell tracking. |
@@ -303,8 +326,8 @@ The filename must be exactly `default.png`; leaving the alternate image named `d
 | Widget does not appear | Confirm the exact `/WIDGETS/KSE4/main.lua` or `/WIDGETS/KSE5/main.lua` path, then restart EdgeTX. |
 | Old behavior remains | Delete any stale `main.luac` from the KSE folder and restart the radio. |
 | `INSTALL RF TOOL` or no RF connection | Confirm `/WIDGETS/RfTool/app.lua`, `/WIDGETS/RfStats/app.lua`, and `/SCRIPTS/RF2/` came from the same current Rotorflight package. |
-| Battery profiles do not open | Profiles are Electric-only. Confirm RF Tool connection, valid Rotorflight battery capacities, disarmed state, stopped governor, and zero headspeed. |
-| Rotorflight FC count is unavailable | Confirm RF Tool 2.3, the `ARM` sensor, enabled Rotorflight model statistics, a disarmed model, and the complete `/SCRIPTS/RF2/` directory. |
+| Battery profiles do not open | Profiles are Electric-only. Confirm RF Tool connection, valid Rotorflight battery capacities, and current, fresh disarmed `ARM` telemetry with no armed RF Tool state. |
+| Rotorflight FC count is unavailable | Confirm RF Tool 2.3, current and fresh disarmed `ARM` telemetry, no armed RF Tool state, enabled Rotorflight model statistics, and the complete `/SCRIPTS/RF2/` directory. |
 | Nitro battery is missing | Nitro uses `Vbec`; it does not load a battery profile. |
 | Top-bar `Profile / Rate` indicator is missing | Confirm a live telemetry link and discover both `PID#` and `RTE#`. The indicator remains hidden unless both values are valid. |
 | Model image is missing | Match the EdgeTX model name and `/IMAGES/` filename, including capitalization. |
@@ -317,6 +340,12 @@ Special thanks to Victor Malpica, Colin Bell, Martin Rottmair, and Tim Yantes fo
 ## Source and updates
 
 KSE4 and KSE5 are maintained together so functional and safety changes can be applied to both variants. The repository publishes readable Lua source rather than a precompiled radio-specific artifact.
+
+### Validation and remaining work
+
+The automated checks use the EdgeTX 2.12.1 Lua core and pinned Rotorflight queue/API code with mocked radio services. They cover ARM-only request admission, profile staging, cross-dashboard behavior, count-file recovery, picker geometry and image bounds. See the [MSP tests](tests/msp_admission/README.md) and [compiler tooling](tools/edgetx/README.md) for reproducible checks. Real-radio SD durability, rendering, memory, timing and RF performance remain unverified.
+
+The broader [optimization plan](docs/implementation-plan.md) is not fully complete. Remaining software work includes duplicate-widget protection, shared-engine extraction beyond storage/MSP admission, general display/alert sensor-cache improvements, unsupported counter/type handling, and dead-code cleanup. RF background servicing during outstanding requests and external-host ownership also remain open; the [RF integration assessment](docs/rf-adapter-design.md) records the upstream receive/transport constraints. These are separate from the accepted limitation that an already-active RF Tool request can continue retrying after KSE stops admitting work.
 
 ## Disclaimer
 

@@ -19,8 +19,12 @@
     if menuAvailable then
       lvgl.menu=function(spec) __mock.menus=__mock.menus+1; __mock.menu=spec end
     end
-    return {profileRfState="disarmed",profileActive=1,profileCapacitiesReady=true,
-            profileCapacities={1000,2000,3000,4000,5000,6000}}
+    local wgt={profileRfState="disarmed",profileActive=1,profileCapacitiesReady=true,
+               profileCapacities={1000,2000,3000,4000,5000,6000}}
+    if api.disarmed then
+      assert(api.disarmed(wgt),"fresh disarmed ARM should admit immediately")
+    end
+    return wgt
   end
   local function case(name) print("PICKER|case|"..name) end
   local function bounds(width,height)
@@ -143,5 +147,6 @@
   wgt=reset(480,320,false,false); lvgl=nil
   assert(api.show(wgt)==false and wgt.profileNoticeDetail=="UPDATE EDGETX FOR PROFILE PICKER")
   case("missing-lvgl")
+  assert(__mock.unrelatedReads==0,"picker admission must not inspect Gov or Hspd")
   print("PICKER|complete")
 end)()
