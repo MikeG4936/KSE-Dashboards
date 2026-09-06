@@ -24,6 +24,7 @@ function Admission.disarmed(wgt)
                     and host.widget.state or nil
   local queue = type(host) == "table" and host.mspQueue or nil
   local widget = type(host) == "table" and host.widget or nil
+  local aircraft = OPT.autoHeliType and AUTO_HELI.providerName(host) or nil
   local ok, info = pcall(model.getInfo)
   local name = ok and type(info) == "table" and (info.filename or info.name) or nil
   local linked, rssi = false, nil
@@ -43,11 +44,13 @@ function Admission.disarmed(wgt)
     reason = "DISARM TO CHANGE PROFILE"
   end
   if reason or wgt.mspContextProvider ~= host or wgt.mspContextModel ~= name
-     or wgt.mspContextQueue ~= queue or wgt.mspContextWidget ~= widget then
+     or wgt.mspContextQueue ~= queue or wgt.mspContextWidget ~= widget
+     or wgt.mspContextAircraft ~= aircraft then
     wgt.mspContextEpoch = (wgt.mspContextEpoch or 0) + 1
   end
   wgt.mspContextProvider, wgt.mspContextModel = host, name
   wgt.mspContextQueue, wgt.mspContextWidget = queue, widget
+  wgt.mspContextAircraft = aircraft
   if reason then return false, reason end
   return true
 end
@@ -57,6 +60,8 @@ function Admission.capture(wgt, operation)
   operation.modelName = wgt.mspContextModel
   operation.epoch = wgt.mspContextEpoch
   operation.heliType = OPT.heliType
+  operation.autoHeliType = OPT.autoHeliType
+  operation.aircraft = wgt.mspContextAircraft
 end
 
 function Admission.valid(wgt, operation)
@@ -66,6 +71,10 @@ function Admission.valid(wgt, operation)
      and operation.queue == wgt.mspContextQueue
      and operation.epoch == wgt.mspContextEpoch
      and operation.heliType == OPT.heliType
+     and operation.autoHeliType == OPT.autoHeliType
+     and operation.aircraft == wgt.mspContextAircraft
+     and (not OPT.autoHeliType or operation.kind == "armingStatus"
+          or (AUTO_HELI.current() and AUTO_HELI.name == wgt.mspContextAircraft))
 end
 
 function Admission.cancelPending(operation)

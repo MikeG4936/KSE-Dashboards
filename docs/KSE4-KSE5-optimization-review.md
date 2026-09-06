@@ -28,6 +28,18 @@ The findings below describe the dated audit baseline. Current behavior is define
 
 Original measurements and line references remain historical evidence. Re-run compiler/resource tooling for current values. The final transmitter-validation slice remains open; software contracts do not establish native LVGL memory, radio scheduling, SD durability or RF latency.
 
+## Auto helicopter type integration contract
+
+Auto extends the existing Heli Type slot with value 4, preserving manual values, the Electric default and all ten option slots. The shared engine confirms a nonempty connected FC name for 30 ticks, infers Nitro from a case-insensitive trailing `N` or `Nitro`, and otherwise selects Electric. It never infers OMP. The confirmed name supplies display/image lookup and the existing normalized local-count key; changing it does not migrate stored history.
+
+RF Tool already obtains the name through [its initialization read](https://github.com/rotorflight/rotorflight-lua-scripts/blob/aaacfe68407c09d49a26c5aa326c00119b378bb0/src/SCRIPTS/RF2/background_init.lua#L130-L156), independently of the optional transmitter rename. KSE adds no name polling. The [upstream disconnected transition](https://github.com/rotorflight/rotorflight-lua-scripts/blob/aaacfe68407c09d49a26c5aa326c00119b378bb0/src/WIDGETS/RfTool/app.lua#L81-L89) clears that published name. Evidence remains tied to the RF Tool version identified above.
+
+Unresolved Auto pauses type-dependent alerts, profile operations and local/FC counting while ordinary telemetry continues. Diagnostics remain subject to the same confirmed-disarm admission policy. Preserve last confirmed identity during disconnect and warning latches through a brief RSSI dropout; observed RF reconnection, name/provider/queue/host replacement requires new confirmation and a new session. Hidden callbacks may resolve identity but must defer rebuilding the UI until foreground refresh. Duplicate inactive widgets must not reset the owner's Auto state or dirty count storage.
+
+Check current FC identity at callback admission as well as at refresh, including same-type name changes with transmitter naming disabled. Invalidate old callbacks and remove pending owned work before embedded service; preserve active transactions and foreign work. Do not restore the feature branch's old `queue.clear()` cancellation: [upstream clear](https://github.com/rotorflight/rotorflight-lua-scripts/blob/aaacfe68407c09d49a26c5aa326c00119b378bb0/src/SCRIPTS/RF2/MSP/mspQueue.lua#L139-L145) resets the active transport and violates the selected boundary.
+
+Acceptance is covered by [Auto lifecycle contracts](../tests/auto_type/README.md), [MSP admission contracts](../tests/msp_admission/README.md) and the existing ownership, rendering, storage and compiler gates. Validate 29/30-tick confirmation, stale callbacks between profile stages, same-name provider replacement, manual/Auto transitions, strict fractional-option rejection, FC-name counts and all three display sizes. Real-radio name timing, memory, UI, SD and RF behavior remain in slice 6.
+
 ## Assessment
 
 The highest-value improvements are correctness and lifecycle fixes, followed by making the functional engine identical between variants. The existing 10 Hz sampling, numeric sensor-ID cache, retained LVGL objects, and changed-property updates are sensible. A wholesale rendering rewrite or more aggressive polling is not justified.

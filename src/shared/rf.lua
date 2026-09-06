@@ -697,6 +697,7 @@ end
 
 local function profileBeginFlightStats(wgt)
   if not MspAdmission.disarmed(wgt) then return false end
+  if not AUTO_HELI.current() then return false end
   if wgt.profileBusy then return false end
   local queue = profileSharedQueue()
   if not queue or not profileQueueIdle(queue) then return false end
@@ -827,6 +828,7 @@ end
 
 local function profileBeginSnapshot(wgt)
   if not MspAdmission.disarmed(wgt) then return false end
+  if not AUTO_HELI.current() then return false end
   if wgt.profileBusy then return false end
   local queue = profileSharedQueue()
   if not queue then
@@ -915,6 +917,7 @@ end
 
 local function profileBeginOperation(wgt, kind, target)
   if not MspAdmission.disarmed(wgt) then return false end
+  if not AUTO_HELI.current() then return false end
   if kind ~= "select" and kind ~= "activeCapacity" then return false end
   if type(target) ~= "number" or not (target >= 1 and target <= BATTERY_PROFILE_COUNT)
      or target > math.floor(target) then return false end
@@ -1594,6 +1597,46 @@ local function profileServiceMspAdmission(wgt, now)
   end
 end
 
+local function syncAutoHeli(wgt)
+  local shared = profileRfToolProvider()
+  local queue = shared and shared.mspQueue or nil
+  local host = shared and shared.widget or nil
+  local info = OPT.autoHeliType and getModelInfo() or nil
+  local modelIdentity = info and (info.filename or info.name) or nil
+  local replaced = wgt.autoHeliQueue ~= queue or wgt.autoHeliHost ~= host
+                   or wgt.autoHeliModel ~= modelIdentity
+  wgt.autoHeliQueue, wgt.autoHeliHost = queue, host
+  wgt.autoHeliModel = modelIdentity
+  if wgt.profileProviderChanged or (OPT.autoHeliType and replaced) then
+    wgt.profileProviderChanged = false
+    profileResetConnection(wgt)
+    wgt.autoHeliNeedsReset = true
+    wgt.autoHeliCandidate, wgt.autoHeliCandidateTick = nil, nil
+  end
+  if not OPT.autoHeliType then return end
+  local connected = profileControllerConnected(wgt)
+  local live = profileRadioLinkLive()
+  local name = AUTO_HELI.providerName(shared)
+  if not connected or not name then wgt.autoHeliNeedsReset = true end
+  AUTO_HELI.sync(wgt, live and connected and name or nil,
+    not live and "AUTO DISCONNECTED" or "WAITING FOR FC NAME")
+end
+
+local function prepareBatteryProfileFeature(wgt)
+  if not WidgetOwner.current(wgt) then return end
+  local _, _, _, rfToolNeeded = profileModeAccess()
+  if rfToolNeeded then profileRegisterWithRfTool(wgt) end
+  syncAutoHeli(wgt)
+  profileServiceMspAdmission(wgt, profileNow())
+  if rfToolNeeded then
+    profileServiceEmbeddedRfTool(wgt)
+    profileRegisterWithRfTool(wgt)
+  end
+  syncAutoHeli(wgt)
+  clearFrameCache()
+  wgt.profilePrepared = true
+end
+
 local function serviceBatteryProfileFeature(wgt, allowUi, event, touchState)
   if not WidgetOwner.current(wgt) then return end
   if allowUi and wgt.profileUiReset then
@@ -1601,17 +1644,13 @@ local function serviceBatteryProfileFeature(wgt, allowUi, event, touchState)
     profileSetEntryPrompt(wgt, false)
     wgt.profileUiReset = nil
   end
-  profileServiceMspAdmission(wgt, profileNow())
+  if not wgt.profilePrepared then prepareBatteryProfileFeature(wgt) end
+  wgt.profilePrepared = nil
   local profileEligible, armingEligible, counterEligible, rfToolNeeded =
     profileModeAccess()
-  if rfToolNeeded then
-    profileServiceEmbeddedRfTool(wgt)
-    profileRegisterWithRfTool(wgt)
-  end
-  if wgt.profileProviderChanged then
-    wgt.profileProviderChanged = false
-    profileResetConnection(wgt)
-  end
+  local modeReady = not OPT.autoHeliType or AUTO_HELI.ready
+  profileEligible = profileEligible and modeReady
+  counterEligible = counterEligible and modeReady
   local now = profileNow()
   local connected = rfToolNeeded and profileControllerConnected(wgt)
   local showConnected = rfToolNeeded and connected or false
@@ -1796,6 +1835,7 @@ local function profileRetire(wgt)
 end
 
 return {
+  prepare=prepareBatteryProfileFeature,
   retire=profileRetire,
   service=serviceBatteryProfileFeature,
   reset=profileResetConnection,

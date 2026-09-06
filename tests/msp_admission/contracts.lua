@@ -367,6 +367,158 @@ eq("Nitro late reply cannot restore operation",w.profileOperation,nil)
 a,w,q=setup(); assert(disarmed(a,w)); assert(a.profiles.status(w))
 eq("status retains upstream default retry delay",w.armingStatusOperation.messages[1].retryDelay,nil)
 
+-- Auto consumes RF Tool's published FC name; no additional name request is
+-- created. Prepare through the actual controller to establish provider identity.
+local function setupAuto(ready, counter)
+  local api,widget,queue=setup(1,counter or 1)
+  api.OPT.autoHeliType=true
+  rf2.modelName=ready and "Aircraft A" or nil
+  api.profiles.prepare(widget)
+  if ready then
+    env.now=env.now+30
+    api.profiles.prepare(widget)
+    assert(api.AUTO_HELI.ready,"Auto fixture did not confirm FC name")
+  end
+  widget.profilePrepared=nil
+  widget.armingStatusNextAt=1000000
+  return api,widget,queue
+end
+
+-- Diagnostics remain useful before name confirmation, but obey every ARM gate.
+do
+  local api,widget,queue=setupAuto(false)
+  eq("Auto waiting allows confirmed-disarm diagnostics",api.profiles.status(widget),true)
+  eq("Auto waiting diagnostic command",queue.messageQueue[1].command,101)
+  local status=widget.armingStatusOperation.messages[1]
+  queueStep(queue,101,status.simulatorResponse)
+  eq("Auto waiting diagnostic callback completes",widget.armingStatusOperation,nil)
+  eq("Auto waiting diagnostic callback publishes flags",widget.armingDisableFlags~=nil,true)
+  eq("Auto waiting diagnostic does not infer type",api.AUTO_HELI.ready,false)
+  for _,gate in ipairs(gates) do
+    if gate[1]~="status" then
+      api,widget,queue=setupAuto(false,2)
+      eq("Auto waiting denies "..gate[1],gate[2](api,widget),false)
+      eq("Auto waiting queues no "..gate[1],#queue.messageQueue,0)
+    end
+  end
+  for _,case in ipairs(invalids) do
+    api,widget,queue=setupAuto(false)
+    case[2](api,widget)
+    eq("Auto waiting "..case[1].." denies diagnostics",api.profiles.status(widget),false)
+    eq("Auto waiting "..case[1].." leaves queue empty",#queue.messageQueue,0)
+  end
+  api,widget,queue=setupAuto(false); arm(widget)
+  eq("Auto waiting armed diagnostics denied",api.profiles.status(widget),false)
+  widget.armingStatusNextAt=nil
+  service(api,widget,env.now+10,false)
+  eq("Auto waiting armed service sends nothing",#env.sent,0)
+  eq("Auto waiting armed service retains host recovery",env.hostCalls>0,true)
+end
+
+-- Each selection ACK can arrive from an external provider before KSE runs.
+-- The FC names below deliberately infer the same effective helicopter type.
+for _,stage in ipairs({176,175,250}) do
+  local api,widget,queue=setupAuto(true)
+  assert(api.profiles.begin(widget,"select",2))
+  if stage~=176 then
+    queueStep(queue,176,{})
+    service(api,widget,env.now+10,false)
+  end
+  if stage==250 then
+    queueStep(queue,175,{1})
+    service(api,widget,env.now+10,false)
+  end
+  local operation=widget.profileOperation
+  local previousActive=widget.profileActive
+  rf2.modelName="Aircraft B"
+  queueStep(queue,stage,stage==175 and {1} or {})
+  eq("Auto changed name before "..stage.." ACK stages no successor",operation.nextMessage,nil)
+  eq("Auto changed name before "..stage.." ACK cannot update active profile",widget.profileActive,previousActive)
+  eq("Auto changed name before "..stage.." ACK cannot complete operation",widget.profileOperation==operation,true)
+  eq("Auto changed name before "..stage.." ACK queues nothing",#queue.messageQueue,0)
+  service(api,widget,env.now+10,false)
+  eq("Auto changed name after "..stage.." ACK retires operation",widget.profileOperation,nil)
+  eq("Auto changed name after "..stage.." ACK reconfirms",api.AUTO_HELI.ready,false)
+end
+
+-- An entry point invoked before preparation must not admit stale ready identity.
+for _,gate in ipairs(gates) do
+  if gate[1]~="status" then
+    local api,widget,queue=setupAuto(true,2)
+    rf2.modelName="Aircraft B"
+    eq("Auto live name mismatch denies direct "..gate[1],gate[2](api,widget),false)
+    eq("Auto live name mismatch queues no "..gate[1],#queue.messageQueue,0)
+  end
+end
+
+-- A directly observed identity interruption must invalidate the old epoch even
+-- if RF Tool restores the prior name before the next KSE callback.
+for _,gate in ipairs(gates) do
+  if gate[1]~="status" then
+    local api,widget,queue=setupAuto(true,2)
+    assert(api.profiles.begin(widget,"select",2))
+    local operation=widget.profileOperation
+    rf2.modelName="Aircraft B"
+    eq("Auto transient name blocks direct "..gate[1],gate[2](api,widget),false)
+    rf2.modelName="Aircraft A"
+    operation.messages[1].processReply(operation.messages[1],{})
+    eq("Auto observed name interruption at "..gate[1].." rejects old ACK",operation.nextMessage,nil)
+  end
+end
+
+-- Published identity changes invalidate both callback families immediately.
+do
+  local api,widget,queue=setupAuto(true)
+  assert(api.profiles.status(widget))
+  local status=widget.armingStatusOperation.messages[1]
+  rf2.modelName="Aircraft B"
+  queueStep(queue,101,status.simulatorResponse)
+  eq("Auto name change rejects old diagnostic callback",widget.armingDisableFlags,nil)
+  eq("Auto name change rejects old diagnostic timestamp",widget.armingStatusUpdatedAt,nil)
+end
+for _,case in ipairs(identities) do
+  if case[1]~="helicopter type change" then
+    local api,widget,queue=setupAuto(true)
+    assert(api.profiles.begin(widget,"select",2))
+    local operation=widget.profileOperation
+    local ownedMessage=operation.messages[1]
+    queueStep(queue)
+    case[2](api,widget)
+    ownedMessage.processReply(ownedMessage,{})
+    eq("Auto "..case[1].." callback rejects successor",operation.nextMessage,nil)
+    service(api,widget,env.now+10,false)
+    eq("Auto "..case[1].." retires old operation",widget.profileOperation,nil)
+    eq("Auto "..case[1].." retains old active object",queue.currentMessage==ownedMessage,true)
+    eq("Auto "..case[1].." never clears transport",env.clearCalls,0)
+    eq("Auto "..case[1].." requires name reconfirmation",api.AUTO_HELI.ready,false)
+  end
+end
+
+-- Name invalidation preserves an active transaction and interleaved foreign FIFO.
+do
+  local api,widget,queue=setupAuto(true)
+  assert(api.profiles.begin(widget,"select",2))
+  local operation=widget.profileOperation
+  local active=operation.messages[1]
+  queueStep(queue)
+  local first={command=901,payload={}}
+  local last={command=902,payload={}}
+  queue:add(first); queue:add(operation.messages[2]); queue:add(last)
+  local pending=queue.messageQueue
+  rf2.modelName="Aircraft B"
+  service(api,widget,env.now+10,false)
+  eq("Auto name invalidation preserves active request",queue.currentMessage==active,true)
+  eq("Auto name invalidation preserves pending table",queue.messageQueue==pending,true)
+  eq("Auto name invalidation removes only owned pending",#queue.messageQueue,2)
+  eq("Auto name invalidation preserves first foreign",queue.messageQueue[1]==first,true)
+  eq("Auto name invalidation preserves second foreign",queue.messageQueue[2]==last,true)
+  eq("Auto name invalidation preserves transport buffers",env.clearCalls,0)
+  eq("Auto name invalidation preserves unlimited retries",queue.maxRetries,-1)
+  queueStep(queue,176,{})
+  eq("Auto old active ACK admits no successor",#queue.messageQueue,2)
+  eq("Auto old active ACK cannot restore operation",widget.profileOperation,nil)
+end
+
 -- Scoped instruction counts include this mock host, not an actual RF Tool/LVGL
 -- callback. They guard the isolated controller against the project 15k budget.
 if type(measure)=="function" then

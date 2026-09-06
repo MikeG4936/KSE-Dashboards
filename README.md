@@ -99,7 +99,7 @@ When moving from **StacyDashV4**, remove its widget from your telemetry screens 
 1. Back up your KSE folders and custom model images. Keep `/flights-count.csv`, `/flights-count.csv.bak` and `/flights-count.csv.tmp` if present; **never replace existing history with the supplied starter file**.
 2. Copy the updated dashboard folder, keeping your customized `default.png` if you use one. Remove any old KSE `main.luac` and restart EdgeTX.
 3. Keep the complete, compatible RF Tool package installed for Rotorflight models and disable any old `rf2bg` special/global function. Revisit telemetry setup if required sensors are missing. If you delete all sensors before rediscovery, recheck alarms, logging and model functions that use them.
-4. Check saved widget settings and repeat the short bench check above.
+4. Check saved widget settings and repeat the short bench check above. Existing manual Heli Type choices stay manual; select Auto explicitly if wanted.
 
 ## Settings
 
@@ -110,7 +110,7 @@ Both dashboards have the same ten settings. Their colors and a few setting names
 | **Theme** | Dark | Dashboard colors. Each has 22 choices; use the [theme gallery](theme-gallery/README.md) to compare them. KSE4 includes transparent themes; KSE5 uses solid backgrounds. |
 | **TX Battery** | LiPo | Select 2S LiPo or 2S Li-Ion to match the battery in your radio. |
 | **KSE Counter Min (sec)** | 20 | How long Timer 1 must run before KSE counts a flight. Applies only to KSE Counter. |
-| **Heli Type** | Electric | Electric, Nitro or OMPHOBBY. Choose the type that matches your helicopter. |
+| **Heli Type** | Electric | Electric, Nitro or OMPHOBBY, plus [Auto](#auto-helicopter-type) to choose the type from the helicopter’s name. Choose the type that matches your helicopter. |
 | **Batt Reserve %** / **Battery Reserve %** | 20 | Battery reserve for Electric/OMP: with 20% reserve, the dashboard shows 0% when 20% remains. Range 0–50%; does not affect Nitro. |
 | **Battery Voice** | Off | Spoken battery percentages for Electric/OMP and repeating critical-battery warnings. Vibration warnings can still work with voice off. |
 | **Rx Pack Minimum** | 6.60 V | Nitro voltage shown as 0%; minimum allowed is 4.0 V. |
@@ -154,17 +154,32 @@ The dashboard clock shows **EdgeTX Timer 1**, even with Rotorflight FC counting 
 
 **KSE Counter:** with the default 20-second setting, a flight is counted when Timer 1 has run for 20 seconds. Reset Timer 1 between flights. Count-up and countdown timers both work. If you add or recreate KSE after the timer has already passed the chosen duration, reset the timer before the next flight; that existing run will not be counted.
 
-History is shared between KSE4 and KSE5 and stored by model name. Counts are saved in `/flights-count.csv` on the SD card. KSE creates this file automatically for a fresh start; you do not need to copy the supplied starter file. For file errors, see [Count-history recovery](#count-history-recovery).
+History is shared between KSE4 and KSE5 and stored by model name. Auto uses the confirmed FC name instead of the EdgeTX model name. Counts are saved in `/flights-count.csv` on the SD card. KSE creates this file automatically for a fresh start; you do not need to copy the supplied starter file. For file errors, see [Count-history recovery](#count-history-recovery).
 
 **Rotorflight FC counter:** Rotorflight decides whether each flight lasted long enough to count. Disarming and arming again can count as another flight, even without unplugging the battery. KSE displays that total separately from KSE Counter and updates it after confirmed disarm; it does not change or reset it. Timer 1 and a count file are not required for FC counting.
 
 **OMPHOBBY always uses KSE Counter.** Your saved Flight Counter choice takes effect again if you switch to a Rotorflight helicopter type.
 
+### Auto helicopter type
+
+Select **Heli Type → Auto** to choose Electric or Nitro from the connected Rotorflight FC name. A name ending in `N` or `Nitro` selects Nitro; other names select Electric. Matching ignores capitalization and surrounding spaces.
+
+| FC name | Type |
+| --- | --- |
+| `RAW 700N`, `RAW Nitro`, `RAWNitro` | Nitro |
+| `RAW 700`, `RAW Electric`, `Nitro 700E` | Electric |
+
+**Naming trap:** `Goblin` ends in `n`, so it selects Nitro. Use `Goblin 700` for an electric aircraft. Use manual OMPHOBBY mode for OMP models; Auto selects only Electric/Nitro.
+
+Auto needs a connection to read the helicopter’s name. While it is waiting, battery warnings, battery-profile selection and counting may be unavailable. You do not need to enable RF Tool’s **Set name on TX** option.
+
+In Auto, the helicopter’s FC name is used for the dashboard title, model image and KSE flight count. Give each helicopter a different name. Renaming one starts a separate count under the new name; its old history is kept. Check the displayed type and battery profile when connecting a different helicopter.
+
 ## Customization and telemetry reference
 
 ### Model images
 
-Place a PNG or BMP in `/IMAGES/` named for the EdgeTX model. For example:
+Place a PNG or BMP in `/IMAGES/` named for the EdgeTX model, or for the confirmed FC name when using Auto. For example:
 
 ```text
 Model name: Goblin RAW
@@ -231,8 +246,9 @@ The first five names are required. Include **M1** or **M2** in the radio’s mod
 | Can I display temperature in Fahrenheit? | Fahrenheit is not currently supported. Keep `Tesc` (Rotorflight) or `Temp` (OMP, if used) set to Celsius. |
 | Nitro battery is missing | Check `Vbec` and receiver-pack voltage settings; Nitro does not use battery profiles. |
 | `Profile / Rate` is missing | Discover both `PID#` and `RTE#`; the indicator needs a live link and valid values for both. |
-| Model image is missing | Check the filename, capitalization, dimensions and file size against [Model images](#model-images). |
+| Model image is missing | Check the filename, capitalization, dimensions and file size against [Model images](#model-images). Auto uses the confirmed FC name. |
 | Arming-blocker banner disappears in flight | This is normal. The banner is useful before arming and returns after confirmed disarm if a blocker remains. |
+| Auto stays waiting or chooses the wrong type | Check the connection, FC name and [Auto naming rules](#auto-helicopter-type); choose Electric/Nitro manually if needed. |
 
 ### Count-history recovery
 

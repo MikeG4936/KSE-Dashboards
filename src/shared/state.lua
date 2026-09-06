@@ -101,7 +101,27 @@ local A = {
   lastDataTick = -1,
 }
 local HELI_ELECTRIC, HELI_NITRO, HELI_OMPHOBBY = 1, 2, 3
+-- Append Auto without changing the three persisted manual CHOICE values.
+-- Keep name inference separate so another naming provider can be added later.
+local AUTO_HELI = {
+  option=4, confirmTicks=30, ready=false, name=nil,
+  status="WAITING FOR FC NAME",
+}
+function AUTO_HELI.infer(name)
+  name = type(name) == "string" and string.upper(name):gsub("%s+$", "") or ""
+  if name:sub(-1) == "N" or name:sub(-5) == "NITRO" then
+    return HELI_NITRO
+  end
+  return HELI_ELECTRIC
+end
+function AUTO_HELI.providerName(provider)
+  local name = type(provider) == "table" and provider.modelName or nil
+  if type(name) ~= "string" then return nil end
+  name = string.match(name, "^%s*(.-)%s*$")
+  return name ~= "" and name or nil
+end
 local OPT = {
+  autoHeliType = false,
   heliType     = HELI_ELECTRIC,
   battBarMode   = 0,
   reservePct    = 0,
@@ -113,6 +133,19 @@ local OPT = {
   rxPackValid   = true,
   bgTransparent = false,
 }
+-- Callback entry points must also reject an identity published by an external
+-- host since the last KSE refresh; display readiness alone can be stale.
+function AUTO_HELI.current()
+  if not OPT.autoHeliType then return true end
+  local provider = _G.rf2
+  local ok, info = pcall(model.getInfo)
+  local modelIdentity = ok and type(info) == "table" and (info.filename or info.name) or nil
+  return AUTO_HELI.ready and AUTO_HELI.model == modelIdentity
+    and AUTO_HELI.name == AUTO_HELI.providerName(provider)
+    and AUTO_HELI.provider == provider
+    and AUTO_HELI.queue == provider.mspQueue
+    and AUTO_HELI.host == provider.widget
+end
 -- Rotorflight flight-stat reads deliberately reuse RF Tool's one shared MSP
 -- runtime. FC is kept in one table both to make its lifecycle explicit and to
 -- stay below EdgeTX Lua's top-level local-variable limit.
