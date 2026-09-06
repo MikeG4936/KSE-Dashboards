@@ -6,13 +6,15 @@
   deriving its geometry from the current EdgeTX screen or widget zone.
 ]]
 
+-- Shared with KSE4: scaled design measurements use an 800x480 reference.
+-- Actual radio dimensions and widget zones still determine the rendered size.
 local G = {
-  referenceW=480, referenceH=320,
-  screenW=tonumber(_G.LCD_W) or 480,
-  screenH=tonumber(_G.LCD_H) or 320,
-  originX=0, originY=0, w=480, h=320,
+  referenceW=800, referenceH=480,
+  screenW=tonumber(_G.LCD_W) or 800,
+  screenH=tonumber(_G.LCD_H) or 480,
+  originX=0, originY=0, w=800, h=480,
   scaleX=1, scaleY=1, scaleMin=1,
-  compact=true, largeScreen=false,
+  compact=false, largeScreen=true,
 }
 local SMLSIZE      = rawget(_G, "SMLSIZE")      or SMLSIZE      or 0
 local MIDSIZE      = rawget(_G, "MIDSIZE")      or MIDSIZE      or 0
@@ -40,8 +42,12 @@ end
 G.y = function(v)
   return G.rounded(v * G.scaleY)
 end
-G.min = function(v)
-  return G.rounded(v * G.scaleMin)
+-- Fit a uniform detail (ring radius, inset, or border) within its reference
+-- width and height. Separate extents preserve KSE5's established proportions
+-- across aspect ratios after rebasing from 480x320 to 800x480. A single extent
+-- retains the usual minimum-axis scaling used by KSE4.
+G.min = function(w, h)
+  return G.rounded(math.min(w * G.scaleX, (h or w) * G.scaleY))
 end
 G.positiveSize = function(v, fallback)
   v = tonumber(v)
@@ -2288,16 +2294,16 @@ local function buildLayout(zone, fullScreen)
   G.configure(x, y, w, h)
   local layout = {
     x=x, y=y, w=w, h=h,
-    pad=math.max(3, G.min(5)), gap=math.max(2, G.min(4)),
+    pad=math.max(3, G.min(25 / 3, 7.5)), gap=math.max(2, G.min(20 / 3, 6)),
     signature=G.signature(x, y, w, h),
   }
 
-  layout.top = { x=x, y=y, w=w, h=math.max(28, G.y(34)) }
+  layout.top = { x=x, y=y, w=w, h=math.max(28, G.y(51)) }
   layout.ringY = y + layout.top.h + layout.gap
   -- The short 480x272 target needs a fixed minimum for two discrete-font tile
-  -- rows; taller screens scale the original 480x320 proportions normally.
+  -- rows; taller screens scale the equivalent 800x480 design measurements.
   local compactBottomMin = G.compact and math.min(126, h - 118) or 0
-  layout.bottomH = math.max(compactBottomMin, G.y(136),
+  layout.bottomH = math.max(compactBottomMin, G.y(204),
                             math.floor(h * 0.425))
   layout.bottomY = y + h - layout.pad - layout.bottomH
   layout.ringH = math.max(88, layout.bottomY - layout.ringY - layout.gap)
@@ -2315,11 +2321,11 @@ local function buildLayout(zone, fullScreen)
     }
   end
   local firstRingW = layout.rings[1].w
-  layout.ringRadius = math.max(math.max(24, G.min(28)),
-      math.min(math.max(28, G.min(44)),
-               math.floor(firstRingW / 2) - math.max(5, G.x(8)),
-               math.floor((layout.ringH - math.max(26, G.y(30))) / 2)))
-  layout.ringThickness = math.max(math.max(5, G.min(6)),
+  layout.ringRadius = math.max(math.max(24, G.min(140 / 3, 42)),
+      math.min(math.max(28, G.min(220 / 3, 66)),
+               math.floor(firstRingW / 2) - math.max(5, G.x(40 / 3)),
+               math.floor((layout.ringH - math.max(26, G.y(45))) / 2)))
+  layout.ringThickness = math.max(math.max(5, G.min(10, 9)),
                                   math.floor(layout.ringRadius * 0.20))
   -- Match StacyDashV3's vertically balanced ring placement: the gauge sits
   -- midway between its title baseline and footer instead of being top-biased.
@@ -2331,8 +2337,8 @@ local function buildLayout(zone, fullScreen)
   -- a double-width model panel and a compact 2x2 telemetry grid.
   layout.modelW = math.floor((contentW - layout.gap) / 2)
   layout.modelH = layout.bottomH
-  layout.modelFooterH = math.max(22, G.y(24))
-  local imageInset = math.max(3, G.min(4))
+  layout.modelFooterH = math.max(22, G.y(36))
+  local imageInset = math.max(3, G.min(20 / 3, 6))
   layout.modelImageX = layout.modelX + imageInset
   layout.modelImageY = layout.modelY + imageInset
   layout.modelImageW = layout.modelW - imageInset * 2
@@ -2441,35 +2447,35 @@ local function buildTopBar(wgt)
   local l, ui = wgt.layout, wgt.ui
   local t = l.top
   newRect(wgt, t.x, t.y, t.w, t.h, C_TOP, true, 0, 1)
-  local lineInset = math.max(4, G.x(5))
+  local lineInset = math.max(4, G.x(25 / 3))
   lvgl.hline({ x=t.x + lineInset, y=t.y + t.h - 1,
                w=t.w - lineInset * 2,
                h=1, color=C_BORDER })
 
-  local txBodyW, txBodyH = math.max(11, G.x(13)), math.max(19, G.y(21))
+  local txBodyW, txBodyH = math.max(11, G.x(65 / 3)), math.max(19, G.y(31.5))
   local txBodyX = t.x + t.w - l.pad - txBodyW
-  local txBodyY = t.y + math.max(7, G.y(9))
+  local txBodyY = t.y + math.max(7, G.y(13.5))
   local centerY = G.rounded(t.y + t.h / 2)
-  -- KSE4's signal geometry is based on an 800x480 reference. Convert those
-  -- exact proportions into KSE5's 480x320 reference so both glyphs render at
+  -- Both dashboards now express the signal geometry directly in the shared
+  -- 800x480 reference, so both glyphs render at
   -- the same physical size and battery-relative position on every target.
-  local sigX = txBodyX - G.x(8.4) - G.x(21.6)
-  local timerW = math.max(90, G.x(100))
+  local sigX = txBodyX - G.x(14) - G.x(36)
+  local timerW = math.max(90, G.x(500 / 3))
   local timerX = t.x + math.floor((t.w - timerW) / 2)
-  local modelNameX = t.x + math.max(5, G.x(6))
-  local modelNameW = math.max(90, timerX - modelNameX - math.max(5, G.x(6)))
+  local modelNameX = t.x + math.max(5, G.x(10))
+  local modelNameW = math.max(90, timerX - modelNameX - math.max(5, G.x(10)))
 
   -- On EdgeTX color displays BOLD is a font size of its own, not a style bit.
   -- Combining it with SMLSIZE/MIDSIZE selects an unintended oversized font on
   -- the radio even when a desktop mock happens to look acceptable.
-  ui.modelName = newLabel(wgt, modelNameX, t.y + math.max(1, G.y(2)),
+  ui.modelName = newLabel(wgt, modelNameX, t.y + math.max(1, G.y(3)),
                           modelNameW, "", G.fontTop, C_TEXT)
-  ui.timer = newLabel(wgt, timerX, t.y + math.max(1, G.y(2)),
+  ui.timer = newLabel(wgt, timerX, t.y + math.max(1, G.y(3)),
                       timerW, "", G.fontTimer, C_TEXT, CENTERED)
 
-  local profileSignalGap = math.max(8, G.x(10))
+  local profileSignalGap = math.max(8, G.x(50 / 3))
   local profileMinW = #"Profile 6 / Rate 6" * 9
-  local profileX = math.min(timerX + timerW - math.max(20, G.x(28)),
+  local profileX = math.min(timerX + timerW - math.max(20, G.x(140 / 3)),
                             sigX - profileSignalGap - profileMinW)
   local profileY = math.floor(centerY - 11)
   if G.screenW == 480 and G.screenH == 320
@@ -2483,20 +2489,20 @@ local function buildTopBar(wgt)
   -- left of the vertical transmitter-battery indicator.
   ui.signal = {}
   for i, referenceH in ipairs(G.signalHeights) do
-    local barH = math.max(1, G.y(referenceH * 2 / 3))
+    local barH = math.max(1, G.y(referenceH))
     ui.signal[i] = newRect(wgt,
-      sigX + (i - 1) * G.x(6),
-      centerY + G.y(20 / 3) - barH,
-      math.max(1, G.x(3.6)), barH, C_BORDER, true, 0, 0)
+      sigX + (i - 1) * G.x(10),
+      centerY + G.y(10) - barH,
+      math.max(1, G.x(6)), barH, C_BORDER, true, 0, 0)
   end
 
   ui.txBody = newPanel(wgt, txBodyX, txBodyY, txBodyW, txBodyH,
-                       C_PANEL_ALT, C_DIM, math.max(1, G.min(2)))
-  local terminalW = math.max(4, G.x(5))
+                       C_PANEL_ALT, C_DIM, math.max(1, G.min(10 / 3, 3)))
+  local terminalW = math.max(4, G.x(25 / 3))
   newRect(wgt, txBodyX + math.floor((txBodyW - terminalW) / 2),
-          txBodyY - math.max(2, G.y(3)), terminalW,
-          math.max(2, G.y(2)), C_DIM, true, 1, 1)
-  local txInset = math.max(2, G.min(2))
+          txBodyY - math.max(2, G.y(4.5)), terminalW,
+          math.max(2, G.y(3)), C_DIM, true, 1, 1)
+  local txInset = math.max(2, G.min(10 / 3, 3))
   ui.txFill = newRect(wgt, txBodyX + txInset,
                       txBodyY + txBodyH - txInset,
                       txBodyW - txInset * 2, 1, C_GREEN, true, 1, 1)
@@ -2519,8 +2525,8 @@ local function buildRingCards(wgt)
   for i = 1, 4 do
     local card = l.rings[i]
     local panel = newPanel(wgt, card.x, card.y, card.w, card.h,
-                           C_PANEL, C_BORDER, math.max(2, G.min(4)))
-    local inset = math.max(2, G.x(2))
+                           C_PANEL, C_BORDER, math.max(2, G.min(20 / 3, 6)))
+    local inset = math.max(2, G.x(10 / 3))
     local accent = newRect(wgt, card.x + inset, card.y + 1,
                            card.w - inset * 2, 1, C_DIM, true, 1, 1)
     -- Arcs are children of the card fill, so EdgeTX clips overdraw at the card
@@ -2546,11 +2552,11 @@ local function buildRingCards(wgt)
     local ringLabel = i == 1 and OPT.simTelemetry
                       and "SIM \xC2\xB7 BATTERY" or RING_LABELS[i]
     local label = newLabel(wgt, card.x + inset,
-                           card.y + math.max(1, G.y(2)),
+                           card.y + math.max(1, G.y(3)),
                            card.w - inset * 2, ringLabel,
                            G.fontSmall, C_DIM, CENTERED)
-    local valueOffset = G.largeScreen and math.max(17, G.y(13)) or 13
-    local unitOffset = G.largeScreen and math.max(14, G.y(10)) or 12
+    local valueOffset = G.largeScreen and math.max(17, G.y(19.5)) or 13
+    local unitOffset = G.largeScreen and math.max(14, G.y(15)) or 12
     -- Keep value and unit locked together; lift both another 2 px so the
     -- complete text group sits optically centered inside the ring.
     local ringTextLift = G.largeScreen and 6 or 2
@@ -2563,7 +2569,7 @@ local function buildRingCards(wgt)
                           card.w - inset * 2, RING_UNITS[i],
                           G.fontSmall, C_DIM, CENTERED)
     local footer = newLabel(wgt, card.x + inset,
-                            card.y + card.h - math.max(16, G.y(16)),
+                            card.y + card.h - math.max(16, G.y(24)),
                             card.w - inset * 2, "", G.fontSmall,
                             C_DIM, CENTERED)
     ui.rings[i] = {
@@ -2579,9 +2585,9 @@ local TILE_LABELS = {
 local function buildLowerDashboard(wgt)
   local l, ui = wgt.layout, wgt.ui
   newPanel(wgt, l.modelX, l.modelY, l.modelW, l.modelH,
-           C_PANEL, C_BORDER, math.max(2, G.min(4)))
+           C_PANEL, C_BORDER, math.max(2, G.min(20 / 3, 6)))
   newRect(wgt, l.modelImageX, l.modelImageY, l.modelImageW,
-          l.modelImageH, C_IMAGE_BG, true, math.max(2, G.min(3)), 1)
+          l.modelImageH, C_IMAGE_BG, true, math.max(2, G.min(5, 4.5)), 1)
   local imageProperties = {
     x=l.modelImageX, y=l.modelImageY, w=l.modelImageW, h=l.modelImageH,
     file=function() return resolveModelImagePath() or "" end,
@@ -2597,30 +2603,30 @@ local function buildLowerDashboard(wgt)
   setVisible(wgt, ui.modelImage, imagePath ~= nil)
   setVisible(wgt, ui.noImage, imagePath == nil)
   local footerY = l.modelY + l.modelH - l.modelFooterH
-  local footerInset = math.max(4, G.x(5))
+  local footerInset = math.max(4, G.x(25 / 3))
   lvgl.hline({ x=l.modelX + footerInset, y=footerY,
                w=l.modelW - footerInset * 2,
                h=1, color=C_BORDER })
-  ui.flightCount = newLabel(wgt, l.modelX + math.max(3, G.x(3)),
-                            footerY + math.max(2, G.y(3)),
-                            l.modelW - math.max(6, G.x(6)), "", G.fontSmall,
+  ui.flightCount = newLabel(wgt, l.modelX + math.max(3, G.x(5)),
+                            footerY + math.max(2, G.y(4.5)),
+                            l.modelW - math.max(6, G.x(10)), "", G.fontSmall,
                             C_TEXT, CENTERED)
 
   ui.tiles = {}
   for i = 1, 4 do
     local tile = l.tiles[i]
     newPanel(wgt, tile.x, tile.y, tile.w, tile.h,
-             C_PANEL_ALT, C_BORDER, math.max(2, G.min(4)))
-    local accentW = math.max(3, G.x(3))
-    local accent = newRect(wgt, tile.x + 1, tile.y + math.max(2, G.y(2)),
-                           accentW, tile.h - math.max(4, G.y(4)),
+             C_PANEL_ALT, C_BORDER, math.max(2, G.min(20 / 3, 6)))
+    local accentW = math.max(3, G.x(5))
+    local accent = newRect(wgt, tile.x + 1, tile.y + math.max(2, G.y(3)),
+                           accentW, tile.h - math.max(4, G.y(6)),
                            C_DIM, true, 1, 1)
-    local textX = tile.x + math.max(8, G.x(9))
-    local textW = tile.w - math.max(15, G.x(16))
-    local label = newLabel(wgt, textX, tile.y + math.max(2, G.y(4)),
+    local textX = tile.x + math.max(8, G.x(15))
+    local textW = tile.w - math.max(15, G.x(80 / 3))
+    local label = newLabel(wgt, textX, tile.y + math.max(2, G.y(6)),
                            textW, TILE_LABELS[i], G.fontSmall, C_DIM)
     local valueFont = i == 1 and G.fontGovernorValue or G.fontTileValue
-    local valueY = tile.y + math.max(19, G.y(21))
+    local valueY = tile.y + math.max(19, G.y(31.5))
     local valueX, valueW = textX, textW
     local valueAlign = RIGHT
     local persistentValueAlign
@@ -2637,7 +2643,7 @@ local function buildLowerDashboard(wgt)
     local value = newLabel(wgt, valueX, valueY,
                            valueW, "--", valueFont, C_TEXT, valueAlign)
     local footer = newLabel(wgt, textX,
-                            tile.y + tile.h - math.max(16, G.y(17)),
+                            tile.y + tile.h - math.max(16, G.y(25.5)),
                             textW, "", G.fontSmall, C_DIM, RIGHT)
     ui.tiles[i] = {
       accent=accent, label=label, value=value, footer=footer,
@@ -2649,7 +2655,7 @@ end
 local function buildProfileEntryPrompt(wgt)
   local l, ui = wgt.layout, wgt.ui
   local promptW = math.min(G.largeScreen and 360 or 250,
-                           l.w - math.max(24, G.x(24)))
+                           l.w - math.max(24, G.x(40)))
   local promptH = G.largeScreen and 64 or 56
   local titleOffset = G.largeScreen and 7 or 5
   local detailOffset = G.largeScreen and 39 or 34
@@ -2661,11 +2667,11 @@ local function buildProfileEntryPrompt(wgt)
   local compactY = l.y + math.floor((l.h - compactH) / 2)
   local prompt = {
     fill=newRect(wgt, x, y, promptW, promptH, C_PANEL_ALT, true,
-                 math.max(3, G.min(6)), 1),
+                 math.max(3, G.min(10, 9)), 1),
     border=newRect(wgt, x, y, promptW, promptH, C_BORDER, false,
-                   math.max(3, G.min(6)), 2),
-    accent=newRect(wgt, x + 2, y + 2, math.max(4, G.x(5)), promptH - 4,
-                   C_GREEN, true, math.max(1, G.min(2)), 1),
+                   math.max(3, G.min(10, 9)), 2),
+    accent=newRect(wgt, x + 2, y + 2, math.max(4, G.x(25 / 3)), promptH - 4,
+                   C_GREEN, true, math.max(1, G.min(10 / 3, 3)), 1),
     title=newLabel(wgt, x + 10, y + titleOffset,
                    promptW - 20, "", G.fontSmall, C_TEXT, CENTERED),
     detail=newLabel(wgt, x + 10, y + detailOffset,
@@ -4576,7 +4582,7 @@ showBatteryProfileMenu = function(wgt)
       w=dx(174),
       h=dy(46),
       font=G.fontSmall,
-      cornerRadius=math.max(3, G.min(6)),
+      cornerRadius=math.max(3, G.min(10, 9)),
       color=function()
         if wgt.profileActive == profileIndex then return C_GREEN end
         if wgt.profilePending == profileIndex then return C_YELLOW end
@@ -4629,7 +4635,7 @@ showBatteryProfileMenu = function(wgt)
   children[#children + 1] = {
     type="button", x=dx(18), y=dy(213), w=dx(174), h=dy(40),
     text="TRY mAh", color=C_PANEL_ALT, textColor=C_TEXT,
-    font=G.fontSmall, cornerRadius=math.max(3, G.min(6)),
+    font=G.fontSmall, cornerRadius=math.max(3, G.min(10, 9)),
     active=function() return not wgt.profileBusy end,
     press=function()
       if wgt.profileBusy then return end
@@ -4641,7 +4647,7 @@ showBatteryProfileMenu = function(wgt)
   children[#children + 1] = {
     type="button", x=dx(208), y=dy(213), w=dx(174), h=dy(40),
     text="CLOSE", color=C_PANEL_ALT, textColor=C_TEXT,
-    font=G.fontSmall, cornerRadius=math.max(3, G.min(6)),
+    font=G.fontSmall, cornerRadius=math.max(3, G.min(10, 9)),
     press=function()
       wgt.profileAutoShown = true
       closeBatteryProfileMenu(wgt)
@@ -5149,17 +5155,17 @@ local function buildUi(wgt)
   buildLowerDashboard(wgt)
   if OPT.heliType ~= HELI_OMPHOBBY then
     local bannerY = wgt.layout.top.y + wgt.layout.top.h
-    local bannerH = math.max(20, G.y(22))
-    local bannerInset = math.max(5, G.x(5))
+    local bannerH = math.max(20, G.y(33))
+    local bannerInset = math.max(5, G.x(25 / 3))
     local armingBanner = {
       fill=newRect(wgt, wgt.layout.x + bannerInset, bannerY,
                    wgt.layout.w - bannerInset * 2, bannerH, C_RED, true,
-                   math.max(2, G.min(3)), 1),
+                   math.max(2, G.min(5, 4.5)), 1),
       border=newRect(wgt, wgt.layout.x + bannerInset, bannerY,
                      wgt.layout.w - bannerInset * 2, bannerH,
-                     C_YELLOW, false, math.max(2, G.min(3)), 1),
+                     C_YELLOW, false, math.max(2, G.min(5, 4.5)), 1),
       label=newLabel(wgt, wgt.layout.x + bannerInset * 2,
-                     bannerY + math.max(3, G.y(4)),
+                     bannerY + math.max(3, G.y(6)),
                      wgt.layout.w - bannerInset * 4, "", G.fontSmall,
                      C_TEXT, CENTERED),
     }

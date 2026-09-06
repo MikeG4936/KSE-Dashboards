@@ -5,6 +5,8 @@ KSE4 and KSE5 are full-screen EdgeTX telemetry dashboards for RC helicopters. Th
 - **KSE4** uses the original information-dense dashboard with a large theme selection.
 - **KSE5** uses the newer ring-style dashboard with its own 22-theme palette collection.
 
+Both dashboards use an **800 × 480 design reference** and scale their layouts to the actual radio screen or widget zone, including 480 × 320 and 480 × 272 displays. This shared reference does not require an 800 × 480 radio; each dashboard retains its own layout, proportions, and EdgeTX font choices.
+
 Choose the version whose layout you prefer. Both versions can be installed on the same radio, but only one needs to be added to a telemetry screen. Do not have multiple screens setup at one time, please choose one or the other when setting up your screen. Using them at the same time on separate can create issues and cause your radio to go into Emergency Mode.
 
 > **Safety:** These widgets are informational aids. They do not replace correctly configured radio alarms, motor safety, telemetry-loss warnings, or failsafe settings. Bench-test a new installation with the motor physically unable to start before flying.

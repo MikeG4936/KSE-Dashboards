@@ -1,11 +1,41 @@
-# This repository publishes only the two KSE dashboard variants.
+# Publish the dashboard variants, gallery, and selected project instructions.
 /*
 !/.gitignore
 !/README.md
+!/AGENTS.md
+!/docs/
+!/tools/
+!/tests/
 !/flights-count.csv
 !/KSE4/
 !/KSE5/
 !/theme-gallery/
+
+# Agent context and implementation evidence; keep other local notes private.
+/docs/*
+!/docs/implementation-plan.md
+!/docs/KSE4-KSE5-optimization-review.md
+!/docs/rf-adapter-design.md
+
+# Host-side compatibility tooling and fixtures; never copy these to the radio.
+/tools/*
+!/tools/edgetx/
+/tools/edgetx/*
+!/tools/edgetx/*.py
+!/tools/edgetx/*.c
+!/tools/edgetx/*.h
+!/tools/edgetx/README.md
+/tests/*
+!/tests/behavior/
+/tests/behavior/*
+!/tests/behavior/*.py
+!/tests/behavior/*.lua
+!/tests/behavior/README.md
+!/tests/rf_trace/
+/tests/rf_trace/*
+!/tests/rf_trace/*.py
+!/tests/rf_trace/*.lua
+!/tests/rf_trace/README.md
 
 # Local future-widget design/reference document; do not publish.
 /KSE_FUTURE_WIDGET_IMPLEMENTATION_BLUEPRINT.md
