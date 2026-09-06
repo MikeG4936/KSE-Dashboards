@@ -2729,12 +2729,46 @@ function G.serviceSimulation(widget)
   return true
 end
 
-local function fileExists(path)
-  local f = io.open(path, "r")
-  if not f then return false end
-  pcall(io.close, f)
-  return true
+-- Bound native image allocations before giving a candidate to LVGL. Header
+-- checks establish dimensions, not complete PNG/BMP decoder validity.
+local function modelImageAllowed(path)
+  local stat = _G.fstat
+  if type(stat) ~= "function" then return false end
+  local ok, info = pcall(stat, path)
+  local size = ok and type(info) == "table" and tonumber(info.size) or nil
+  if not size or size < 26 or size > 100 * 1024 then return false end
+  local opened, file = pcall(io.open, path, "r")
+  if not opened or not file then return false end
+  local readOk, header = pcall(io.read, file, math.min(54, size))
+  pcall(io.close, file)
+  if not readOk or type(header) ~= "string"
+     or #header ~= math.min(54, size) then return false end
+  local function word(offset, bytes, little)
+    local value = 0
+    for i = 0, bytes - 1 do
+      local position = little and offset + bytes - 1 - i or offset + i
+      value = (value << 8) | string.byte(header, position)
+    end
+    return value
+  end
+  local width, height
+  if #header >= 33 and string.sub(header, 1, 8) == "\137PNG\r\n\26\n"
+     and word(9, 4) == 13 and string.sub(header, 13, 16) == "IHDR" then
+    width, height = word(17, 4), word(21, 4)
+  elseif string.sub(header, 1, 2) == "BM" then
+    local dib = word(15, 4, true)
+    if dib == 12 then
+      width, height = word(19, 2, true), word(21, 2, true)
+    elseif dib >= 40 and #header >= 54 and dib <= size - 14 then
+      width, height = word(19, 4, true), word(23, 4, true)
+      -- A negative BMP height denotes rows stored from top to bottom.
+      if height < 0 then height = -height end
+    end
+  end
+  return width ~= nil and height ~= nil
+         and width > 0 and width <= 480 and height > 0 and height <= 272
 end
+
 local function resolveModelImagePath()
   local name = getModelName()
   if modelImageName == name then return modelImagePath end
@@ -2752,7 +2786,7 @@ local function resolveModelImagePath()
   candidates[#candidates+1] = "/WIDGETS/KSE4/Rotorflight.png"
   modelImagePath = nil
   for _, path in ipairs(candidates) do
-    if fileExists(path) then modelImagePath = path; break end
+    if modelImageAllowed(path) then modelImagePath = path; break end
   end
   modelImageName = name
   return modelImagePath
@@ -4626,7 +4660,11 @@ local function profileButtonText(wgt, profileIndex, multiline)
 end
 
 local function showNativeBatteryProfileMenu(wgt)
-  if not lvgl or type(lvgl.menu) ~= "function" then return false end
+  if not lvgl or type(lvgl.menu) ~= "function" then
+    profileSetNotice(wgt, "BATTERY PROFILE ERROR",
+      "UPDATE EDGETX FOR PROFILE PICKER", C_RED, 500)
+    return false
+  end
   local title = "BATTERY PROFILES"
   if wgt.profileActive then
     title = title .. " - P" .. tostring(wgt.profileActive) .. " ACTIVE"
@@ -4717,16 +4755,25 @@ end
 
 showBatteryProfileMenu = function(wgt)
   if wgt.profileDialog then return true end
-  if G.w < 430 or G.h < 300
-     or not lvgl or type(lvgl.dialog) ~= "function" then
+  if (G.w < 430 or G.h < 300) and lvgl
+     and type(lvgl.menu) == "function"
+     and showNativeBatteryProfileMenu(wgt) then return true end
+  if not lvgl or type(lvgl.dialog) ~= "function" then
     return showNativeBatteryProfileMenu(wgt)
   end
   local title = "KSE4 BATTERY PROFILES"
   if wgt.profileActive then
     title = title .. " - P" .. tostring(wgt.profileActive) .. " ACTIVE"
   end
+  local dialogW = math.min(400, math.max(240, G.w - 24), G.w)
+  local dialogH = math.min(285, math.max(180, G.h - 18), G.h)
+  -- EdgeTX dialog height includes its fixed header (44 px on 800-wide
+  -- displays, 32 px on 480-wide). Scale children within the remaining body.
+  local dialogBodyH = math.max(1, dialogH - (G.screenW == 800 and 44 or 32))
+  local function dx(value) return math.max(1, G.rounded(value * dialogW / 400)) end
+  local function dy(value) return math.max(1, G.rounded(value * dialogBodyH / 253)) end
   local dialogOk, dialog = pcall(lvgl.dialog, {
-    title=title, w=400, h=285,
+    title=title, w=dialogW, h=dialogH,
     close=function() wgt.profileDialog = nil end,
   })
   if not dialogOk or type(dialog) ~= "table"
@@ -4747,8 +4794,8 @@ showBatteryProfileMenu = function(wgt)
     local col = (buttonIndex - 1) % 2
     local row = math.floor((buttonIndex - 1) / 2)
     children[#children + 1] = {
-      type="button", x=18 + col * 190, y=22 + row * 52,
-      w=174, h=46, font=SMLSIZE, cornerRadius=6,
+      type="button", x=dx(18 + col * 190), y=dy(22 + row * 52),
+      w=dx(174), h=dy(46), font=SMLSIZE, cornerRadius=6,
       color=function()
         if wgt.profileActive == profileIndex then return C_GREEN end
         if wgt.profilePending == profileIndex then return C_YELLOW end
@@ -4780,7 +4827,7 @@ showBatteryProfileMenu = function(wgt)
     }
   end
   children[#children + 1] = {
-    type="label", x=18, y=181, w=364, h=22,
+    type="label", x=dx(18), y=dy(181), w=dx(364), h=dy(22),
     font=SMLSIZE,
     color=(function()
       local unsafe = profileSwitchUnsafe(wgt)
@@ -4795,7 +4842,7 @@ showBatteryProfileMenu = function(wgt)
     end)(),
   }
   children[#children + 1] = {
-    type="button", x=18, y=213, w=174, h=40,
+    type="button", x=dx(18), y=dy(213), w=dx(174), h=dy(40),
     text="TRY mAh", color=C_TILE, textColor=C_TEXT,
     font=SMLSIZE, cornerRadius=6,
     active=function() return not wgt.profileBusy end,
@@ -4807,7 +4854,7 @@ showBatteryProfileMenu = function(wgt)
     end,
   }
   children[#children + 1] = {
-    type="button", x=208, y=213, w=174, h=40,
+    type="button", x=dx(208), y=dy(213), w=dx(174), h=dy(40),
     text="CLOSE", color=C_TILE, textColor=C_TEXT,
     font=SMLSIZE, cornerRadius=6,
     press=function()

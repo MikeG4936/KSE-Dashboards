@@ -36,6 +36,15 @@
 !/tests/rf_trace/*.py
 !/tests/rf_trace/*.lua
 !/tests/rf_trace/README.md
+!/tests/picker/
+/tests/picker/*
+!/tests/picker/*.py
+!/tests/picker/*.lua
+!/tests/picker/README.md
+!/tests/assets/
+/tests/assets/*
+!/tests/assets/*.py
+!/tests/assets/README.md
 
 # Local future-widget design/reference document; do not publish.
 /KSE_FUTURE_WIDGET_IMPLEMENTATION_BLUEPRINT.md

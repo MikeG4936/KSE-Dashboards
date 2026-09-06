@@ -267,9 +267,11 @@ These five case-sensitive sensors are the required OMPHOBBY telemetry contract. 
 The supplied `default.png` is used when no model-specific image is found. Custom and replacement KSE images must meet both of these limits:
 
 - Maximum dimensions: **480 × 272 pixels**.
-- Maximum file size: **100 KB**.
+- Maximum file size: **100 KiB (102,400 bytes)**.
 
 Smaller images are acceptable and will be scaled to fit the available image area. Do not use an image that exceeds either limit; oversized images consume additional radio memory and may reduce interface performance or fail to load reliably.
+
+The dashboards check each candidate's file size and PNG/BMP header dimensions before loading it. Missing, oversized or invalid-header images are skipped in favor of the next fallback; if none passes, the model-image area shows a placeholder. Use a valid PNG or BMP: these bounds checks do not repair corrupted image data.
 
 For a custom image, place a PNG or BMP in `/IMAGES/` using the EdgeTX model name as the filename:
 
