@@ -27,6 +27,28 @@ static int host_print(lua_State *L) {
   return 0;
 }
 
+/* Count Lua VM instructions for isolated mocked paths; this is not radio time. */
+static unsigned long measured_instructions;
+static void count_instruction(lua_State *L, lua_Debug *ar) {
+  (void)L; (void)ar;
+  ++measured_instructions;
+}
+static int host_measure(lua_State *L) {
+  luaL_checktype(L, 1, LUA_TFUNCTION);
+  lua_Hook previous = lua_gethook(L);
+  if (previous == count_instruction)
+    return luaL_error(L, "nested measure calls are unsupported");
+  int mask = lua_gethookmask(L), interval = lua_gethookcount(L);
+  measured_instructions = 0;
+  lua_sethook(L, count_instruction, LUA_MASKCOUNT, 1);
+  int status = lua_pcall(L, lua_gettop(L) - 1, LUA_MULTRET, 0);
+  lua_sethook(L, previous, mask, interval);
+  if (status) return lua_error(L);
+  lua_pushinteger(L, (lua_Integer)measured_instructions);
+  lua_insert(L, 1);
+  return lua_gettop(L);
+}
+
 int main(int argc, char **argv) {
   if (argc < 2) { fprintf(stderr, "usage: edgetx-run fixture.lua [arguments...]\n"); return 2; }
   lua_State *L = luaL_newstate();
@@ -42,6 +64,7 @@ int main(int argc, char **argv) {
   luaopen_string(L); /* Installs the string metatable. */
   lua_settop(L, 0);
   lua_pushcfunction(L, host_print); lua_setglobal(L, "print");
+  lua_pushcfunction(L, host_measure); lua_setglobal(L, "measure");
   lua_newtable(L);
   for (int i = 1; i < argc; ++i) {
     lua_pushstring(L, argv[i]); lua_rawseti(L, -2, i - 1);

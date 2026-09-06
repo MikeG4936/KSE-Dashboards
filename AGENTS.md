@@ -11,6 +11,7 @@ One primary agent owns edits to both dashboard engines and integrates changes. U
 - **Implement the optimization work:** read [the implementation plan](docs/implementation-plan.md) before editing. It defines the six slices, dependencies and completion gates. Continue through authorized slices without routine approval pauses.
 - **Change dashboard behavior, RF integration, rendering, storage or resource usage:** read the applicable findings, preservation rules and validation cases in [the compatibility review](docs/KSE4-KSE5-optimization-review.md) first. Its measurements and source lines are dated evidence; recheck the current functions and supported upstream versions before applying a finding.
 - **Change installation, options or user-visible behavior:** reconcile the affected [README](README.md) instructions with the resulting code. Preserve existing saved settings and data unless an explicit migration is part of the task.
+- **Edit shared sections:** change the authored module under `src/shared`, run `python3 tools/assemble.py`, and require `python3 tools/assemble.py --check` to pass. The marked blocks in each dashboard are generated; surrounding render code remains authored in place. Storage contracts and checks are documented in [tests/storage](tests/storage/README.md).
 
 ## Project invariants
 

@@ -6,6 +6,7 @@
 !/docs/
 !/tools/
 !/tests/
+!/src/
 !/flights-count.csv
 !/KSE4/
 !/KSE5/
@@ -19,6 +20,7 @@
 
 # Host-side compatibility tooling and fixtures; never copy these to the radio.
 /tools/*
+!/tools/assemble.py
 !/tools/edgetx/
 /tools/edgetx/*
 !/tools/edgetx/*.py
@@ -45,6 +47,15 @@
 /tests/assets/*
 !/tests/assets/*.py
 !/tests/assets/README.md
+!/tests/storage/
+/tests/storage/*
+!/tests/storage/*.py
+!/tests/storage/*.lua
+!/tests/storage/README.md
+/src/*
+!/src/shared/
+/src/shared/*
+!/src/shared/count_storage.lua
 
 # Local future-widget design/reference document; do not publish.
 /KSE_FUTURE_WIDGET_IMPLEMENTATION_BLUEPRINT.md

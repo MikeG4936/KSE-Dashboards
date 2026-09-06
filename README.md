@@ -192,9 +192,15 @@ Countdown timers use their start value minus their current value as elapsed time
 
 The widget does not configure, start, stop, or reset Timer 1 for you.
 
+KSE counts are saved through a validated temporary file, retaining `/flights-count.csv.bak` for recovery. A missing main file can recover from that backup. The reader refuses to rewrite malformed histories, histories over 32 KiB or 200 models, and ambiguous `#`-prefixed model records. Model names beginning with `#` cannot be saved in the existing comment-based CSV format.
+
+`FILE ERROR` means the history could not be loaded or a count remains unsaved. After correcting the SD-card/file issue, switch **Flight Counter** away from and back to **KSE Counter**, or recreate the widget, to retry. Each retry cycle makes at most three attempts, five seconds apart. Pending counts survive that setting change within the loaded dashboard; a transmitter restart can lose unsaved RAM. Preserve copies of `.csv`, `.bak` and `.tmp` before repairing a history. A `.tmp` file alone is treated as unconfirmed and needs review before restoring a complete history as `/flights-count.csv`.
+
 ### Rotorflight FC counter
 
 The Rotorflight counter reads the FC-owned total through RF Tool. It does not write or reset the FC count and never combines it with `/flights-count.csv`.
+
+An already-counted KSE event can finish saving after you switch to the Rotorflight counter. A failure in that pending local save is labelled `KSE FILE ERROR`; it does not change the displayed FC total. Starting with the Rotorflight counter alone does not load or write the local count history.
 
 For this mode:
 

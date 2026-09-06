@@ -28,6 +28,22 @@ end
 getRSSI=function() return 0 end
 model={getInfo=function() return {name=__mock.modelName} end,
        getTimer=function() return __mock.timer end}
+fstat=function(path)
+  if path=="/" then return {size=0} end
+  local data=__mock.files[path]
+  if data~=nil then return {size=#data} end
+end
+rename=function(from,to)
+  if __mock.files[from]==nil then return 4 end
+  if __mock.files[to]~=nil then return 8 end
+  __mock.files[to],__mock.files[from]=__mock.files[from],nil
+  return 0
+end
+del=function(path)
+  if __mock.files[path]==nil then return 4 end
+  __mock.files[path]=nil
+  return 0
+end
 io={open=function(path,mode)
   if mode=="r" and __mock.files[path]==nil then return nil end
   return {path=path,pos=1}
