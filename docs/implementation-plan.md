@@ -20,7 +20,7 @@ Use review subagents for substantive RF/safety changes and shared-engine extract
 
 ### 2. RF lifecycle and ownership
 
-**Scope:** findings 2, 3, 4 and the ownership portion of 8. Establish the shared RF integration's ownership contract, repair KSE-controlled servicing and Nitro deadlines, align reset/invalidation, and guard duplicate owners. Verify and document the unmodified provider's mixed MSP/custom-telemetry behavior and remaining receive limitations.
+**Scope:** findings 2, 3, 4 and the ownership portion of 8. Establish the shared RF integration's ownership contract, repair KSE-controlled servicing and Nitro deadlines, align reset/invalidation, and guard duplicate owners. An existing owner can be replaced only by foreground refresh after a 500-tick inactive lease; preserve dirty count data and monotonic callback tokens across takeover. Service explicitly embedded hosts only; external hosts retain their own callbacks. Verify and document the unmodified provider's mixed MSP/custom-telemetry behavior and remaining receive limitations.
 
 **Accepted integration boundary:** read the [RF adapter feasibility review](rf-adapter-design.md). Keep the official RF Tool unmodified, including already-loaded external hosts. The user selected admission-only control: stop new KSE-owned requests without confirmed disarm, invalidate callbacks and remove pending owned work where safely possible, while leaving active upstream transport transactions and foreign work intact. An already-active request may continue fragments/retries indefinitely. No RF Tool patch or further approval is required for this scope; per-send cancellation and mixed-frame demultiplexing remain historical adapter alternatives, not completion gates.
 
@@ -36,13 +36,13 @@ Use review subagents for substantive RF/safety changes and shared-engine extract
 
 ### 4. Persistence and smaller correctness fixes
 
-**Scope:** findings 5, 6 and 11. Use EdgeTX filesystem/global-constant semantics, recover count files across failures, prevent partial-history overwrites, and reconcile counter and helicopter-mode contracts. Preserve current counting behavior when resolving documentation mismatches unless a behavior change is explicitly specified.
+**Scope:** findings 5, 6 and 11. Use EdgeTX filesystem/global-constant semantics, recover count files across failures, prevent partial-history overwrites, and reconcile counter and helicopter-mode contracts. Preserve current counting behavior when resolving documentation mismatches unless a behavior change is explicitly specified. OMP uses the KSE counter while retaining the saved counter preference for Rotorflight modes.
 
 **Done when:** simulated write/rename/interruption failures preserve recoverable counts and visible failure state; oversized histories cannot be silently truncated; the haptic priority flag resolves correctly. Both counter choices have matching cross-variant behavior and accurate documentation, with persisted options retained. Record SD/haptic hardware checks still required.
 
 ### 5. Functional parity and compatibility
 
-**Scope:** remaining findings 7 and 8, plus 9, 14 and 15. Finish the shared authored engine and reproducible assembly of standalone variants, align lifecycle and normalization, remove verified dead paths, fix compact picker capability handling, and validate image resources. Maintain separately authored render/style adapters.
+**Scope:** remaining findings 7 and 8, plus 9, 14 and 15. Finish the shared authored engine and reproducible assembly of standalone variants, align lifecycle and normalization, remove verified dead paths, fix compact picker capability handling, and validate image resources. Maintain separately authored render/style adapters. Follow the [source assembly contract](../src/README.md); sensor identity caches have a 100-tick lifetime, while ARM/Gov/Hspd/RPM identity is resolved for each sample. Require fresh motor-stop proof for alert pauses without adding those sensors to MSP admission.
 
 **Done when:** one functional source generates both variants; regeneration is deterministic; identical input traces produce matching values, alerts, counts and owned MSP requests. Both outputs pass compiler/resource gates, settings remain compatible, and each dashboard installs independently. Picker/layout checks cover all three target dimensions and theme mappings. An independent reviewer verifies parity and the boundaries between shared behavior and intentional presentation differences.
 

@@ -22,6 +22,12 @@ After this baseline review, KSE5 was rebased from 480×320 to **800×480**, matc
 
 Validation used the EdgeTX v2.12.1 Lua core: both production scripts parse successfully, with local-variable counts unchanged. Mock LVGL property/layout comparisons covered 81 combinations of three screen sizes (800×480, 480×320, 480×272), three helicopter modes, three themes, and full-sized/offset/fullscreen-transition zones. Full-screen target geometry matched the previous KSE5 exactly; resized zones allowed at most one pixel of coordinate/size rounding difference from 32-bit floating-point conversion. These are geometry checks, not physical-radio rendering tests. Line references and bytecode figures elsewhere in this report refer to the original review baseline.
 
+## Current implementation authority
+
+The findings below describe the dated audit baseline. Current behavior is defined by the [shared authored engine](../src/README.md) and [README](../README.md), with one complete generated file per standalone dashboard. The five follow-ups now have executable contracts: [duplicate ownership](../tests/ownership/README.md), [RF lifecycle/admission](../tests/msp_admission/README.md), [cache and mode semantics](../tests/behavior/README.md), and [render-function coverage](../tests/render/README.md). OMP deliberately uses local counting without rewriting the saved counter preference. Display metadata expires after 100 ticks; motor-stop proof requires fresh samples and immediate identity resolution. These rules do not change the accepted ARM-only MSP policy.
+
+Original measurements and line references remain historical evidence. Re-run compiler/resource tooling for current values. The final transmitter-validation slice remains open; software contracts do not establish native LVGL memory, radio scheduling, SD durability or RF latency.
+
 ## Assessment
 
 The highest-value improvements are correctness and lifecycle fixes, followed by making the functional engine identical between variants. The existing 10 Hz sampling, numeric sensor-ID cache, retained LVGL objects, and changed-property updates are sensible. A wholesale rendering rewrite or more aggressive polling is not justified.

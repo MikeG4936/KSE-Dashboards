@@ -1,0 +1,2 @@
+  buildPrompt=profileBuildEntryPrompt,
+  buildArmingBanner=profileBuildArmingBanner,
