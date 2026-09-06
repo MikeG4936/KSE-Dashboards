@@ -16,14 +16,15 @@ __runContracts=function()
     t.clearFrameCache()
   end
   local function reset()
-    m.values={}; m.events={}
+    m.values={}; m.events={}; m.fieldCalls={}
     t.resetSessionEvidence(); t.resetSessionStats(); frame(0)
     t.applyOptions({HeliType=1,BattRsv=20,CountSrc=1,MinFlight=30,
                     RxPackMin="6.60",RxPackMax="8.40",MotorSw=99})
   end
   local function source(name,value,current,fresh)
     m.values[name]={value=value,current=current,fresh=fresh}
-    frame()
+    -- Discovery changes become visible after the bounded metadata-cache TTL.
+    frame(m.now+100)
   end
   local function alert(now,pct,voice,data)
     frame(now); t.updateBatteryAlertState(pct,data~=false,voice,"fc")
@@ -51,13 +52,13 @@ __runContracts=function()
   check("one sample per frame",t.getCurr(),32)
   frame()
   check("next frame refresh",t.getCurr(),44)
-  -- A noncurrent cached ID must be re-resolved on a later frame.
+  -- A noncurrent cached ID is rejected immediately and re-resolves at TTL.
   reset()
   m.values.Curr={id=301}; m.values[301]={value=12}
   check("numeric sensor ID lookup",t.getCurr(),12)
   m.values[301].current=false; frame()
   check("expired ID invalid",t.getCurr(),0)
-  m.values.Curr={id=302}; m.values[302]={value=13}; frame()
+  m.values.Curr={id=302}; m.values[302]={value=13}; frame(100)
   check("changed sensor ID recovery",t.getCurr(),13)
   source("Vcel",3.97)
   check("Rotorflight average cell scalar",t.getCellVoltage(),3.97)
@@ -219,7 +220,11 @@ __runContracts=function()
   check("count before countdown threshold",count(120,91),2)
   check("count at countdown threshold",count(120,90),3)
   check("count countdown overrun",count(120,-10),3)
+  -- Simulate removing the old widget and opening its replacement after the
+  -- ownership lease expires. Exercise the real foreground takeover path.
+  frame(m.now+500)
   w=t.create({x=0,y=0,w=800,h=480},opts)
+  t.refresh(w,nil,nil)
   check("attach over threshold no extra flight",count(120,80),3)
   check("attach then reset",count(120,120),3)
   check("attach next flight",count(120,90),4)
@@ -262,6 +267,163 @@ __runContracts=function()
     print("THEME|"..i.."|"..t.options[1][4][i].."|"..tostring(bg).."|"..
           tostring(accent).."|"..tostring(transparent))
   end
+  -- Generic metadata is cached for 100 ticks, including unsuccessful lookup.
+  reset()
+  m.values.Curr={id=601}; m.values[601]={value=12}
+  check("metadata initial ID",t.get("Curr"),12)
+  check("metadata first lookup",m.fieldCalls.Curr,1)
+  m.values.Curr={id=602}; m.values[602]={value=24}
+  frame(99)
+  check("metadata positive TTL retains ID",t.get("Curr"),12)
+  check("metadata positive TTL avoids lookup",m.fieldCalls.Curr,1)
+  frame(100)
+  check("metadata positive TTL rebinds ID",t.get("Curr"),24)
+  check("metadata positive TTL lookup count",m.fieldCalls.Curr,2)
+  frame(101)
+  check("metadata missing source",t.get("AbsentTelemetry"),nil)
+  m.values.AbsentTelemetry={id=603}; m.values[603]={value=8}
+  frame(200)
+  check("metadata negative TTL holds absence",t.get("AbsentTelemetry"),nil)
+  check("metadata negative TTL avoids lookup",m.fieldCalls.AbsentTelemetry,1)
+  frame(201)
+  check("metadata negative TTL discovers source",t.get("AbsentTelemetry"),8)
+  check("metadata negative TTL lookup count",m.fieldCalls.AbsentTelemetry,2)
+
+  -- Safety/acknowledgement source names re-resolve even within one frame.
+  for i,name in ipairs({"ARM","Gov","Hspd","RPM"}) do
+    m.values[name]={id=610+i}; m.values[610+i]={value=4}
+    check(name.." uncached initial ID",t.get(name),4)
+    m.values[name]={id=620+i}; m.values[620+i]={value=5}
+    check(name.." uncached changed ID",t.get(name),5)
+    check(name.." metadata every call",m.fieldCalls[name],2)
+  end
+
+  reset()
+  m.values.Curr={value=31,rawFlags=true,current=nil,fresh=true}
+  local value,current,fresh=t.get("Curr")
+  check("unspecified current value rejected",value,nil)
+  check("unspecified current metadata rejected",current,false)
+  m.values.Curr.current=1; frame()
+  value,current,fresh=t.get("Curr")
+  check("truthy nonboolean current rejected",value,nil)
+  m.values.Curr.current=true; m.values.Curr.fresh=1; frame()
+  value,current,fresh=t.get("Curr")
+  check("truthy nonboolean freshness rejected",fresh,false)
+  m.values.Curr.current=true; m.values.Curr.fresh=nil; frame()
+  value,current,fresh=t.get("Curr")
+  check("current sample survives absent freshness",value,31)
+  check("absent freshness stays false",fresh,false)
+  m.values.Curr.fresh=false; frame()
+  value,current,fresh=t.get("Curr")
+  check("stale current sample remains displayable",value,31)
+  check("false freshness preserved",fresh,false)
+  m.values.Curr.fresh=true; frame()
+  value,current,fresh=t.get("Curr")
+  check("explicit freshness preserved",fresh,true)
+  local sourceValueApi=getSourceValue
+  getSourceValue=nil; frame()
+  value,current,fresh=t.get("Curr")
+  check("legacy display value",value,31)
+  check("legacy display current",current,true)
+  check("legacy API cannot prove freshness",fresh,false)
+  getSourceValue=sourceValueApi
+
+  -- Reset must discard both cached IDs and cached absence, without waiting.
+  reset()
+  m.values.Curr={id=701}; m.values[701]={value=11}
+  t.get("Curr"); t.get("NewAfterReset")
+  m.values.Curr={id=702}; m.values[702]={value=22}
+  m.values.NewAfterReset={value=33}
+  t.resetSessionEvidence(); frame(1)
+  check("session reset clears positive metadata",t.get("Curr"),22)
+  check("session reset clears negative metadata",t.get("NewAfterReset"),33)
+  t.get("NewAfterModel")
+  m.values.Curr={id=703}; m.values[703]={value=44}
+  m.values.NewAfterModel={value=55}
+  m.modelName="Changed cache model"; frame(2); t.tickFlightCount()
+  check("model reset clears positive metadata",t.get("Curr"),44)
+  check("model reset clears negative metadata",t.get("NewAfterModel"),55)
+  m.modelName="Fixture"
+
+  -- Freshness limits stop acknowledgement only; stale values remain usable
+  -- for display. Each scenario builds real movement/running/stop evidence.
+  local function motorSample(now,position,rpm,rpmFresh,gov,govFresh)
+    frame(now)
+    m.values[t.OPT.heliType==3 and "RPM" or "Hspd"]={value=rpm,fresh=rpmFresh}
+    m.values.Gov=gov~=nil and {value=gov,fresh=govFresh} or nil
+    t.A.linkAvailable=true
+    t.A.motorSourcePhysical=true; t.A.motorSourceReadable=true
+    t.A.motorSwitchPosition=position
+    local head=t.getHeadspeed()
+    local mode=t.getGovernorMode()
+    t.updateMotorAlertGate(now,mode,head)
+    return head
+  end
+  for _,heli in ipairs({1,3}) do
+    local label=heli==1 and "Electric RPM" or "OMP RPM"
+    reset(); t.OPT.heliType=heli; t.OPT.battBarMode=0
+    check(label.." stale display",motorSample(0,-1,2200,false,nil,false),2200)
+    check(label.." stale display validity",t.D.rpmValid,true)
+    check(label.." stale freshness",t.D.rpmFresh,false)
+    motorSample(10,-1,2200,true,nil,false)
+    motorSample(20,1,0,false,nil,false)
+    motorSample(60,1,0,false,nil,false)
+    check(label.." stale stop cannot pause",t.A.flightBatteryAlertsPaused,false)
+    -- Start an independent fresh-evidence cycle after resetting stale state.
+    t.resetSessionEvidence()
+    motorSample(70,-1,2200,true,nil,false)
+    motorSample(80,-1,2200,true,nil,false)
+    motorSample(90,1,0,true,nil,false)
+    motorSample(120,1,0,true,nil,false)
+    check(label.." fresh stop pauses",t.A.flightBatteryAlertsPaused,true)
+    motorSample(130,1,0,false,nil,false)
+    check(label.." stale hold releases pause",t.A.flightBatteryAlertsPaused,false)
+  end
+  reset()
+  motorSample(0,-1,nil,false,4,true)
+  motorSample(10,1,nil,false,0,false)
+  motorSample(40,1,nil,false,0,false)
+  check("Gov stale stopped display",t.getGovernorMode(),0)
+  check("Gov stale display validity",t.D.govValid,true)
+  check("Gov stale freshness",t.D.govFresh,false)
+  check("Gov stale stop cannot pause",t.A.flightBatteryAlertsPaused,false)
+  t.resetSessionEvidence()
+  motorSample(50,-1,nil,false,4,true)
+  motorSample(60,-1,nil,false,4,true)
+  motorSample(70,1,nil,false,0,true)
+  motorSample(90,1,nil,false,0,true)
+  check("Gov fresh stop pauses",t.A.flightBatteryAlertsPaused,true)
+  motorSample(100,1,nil,false,0,false)
+  check("Gov stale hold releases pause",t.A.flightBatteryAlertsPaused,false)
+
+  -- Effective OMP counter choice must not rewrite the persisted preference.
+  reset()
+  local savedOptions={HeliType=3,CountSrc=2,BattRsv=20,MinFlight=20,
+                      RxPackMin="6.60",RxPackMax="8.40",MotorSw=99}
+  t.applyOptions(savedOptions)
+  check("OMP effective local counter",t.OPT.flightCounter,t.FC.RADIO)
+  check("OMP preserves saved FC preference",savedOptions.CountSrc,2)
+  savedOptions.HeliType=1; t.applyOptions(savedOptions)
+  check("Electric restores saved FC preference",t.OPT.flightCounter,t.FC.ROTORFLIGHT)
+  savedOptions.HeliType=3; savedOptions.CountSrc=1; t.applyOptions(savedOptions)
+  check("OMP selected local counter stays local",t.OPT.flightCounter,t.FC.RADIO)
+  savedOptions.HeliType=1; t.applyOptions(savedOptions)
+  check("Electric preserves saved local preference",t.OPT.flightCounter,t.FC.RADIO)
+
+  t.applyOptions({HeliType=2,CountSrc=1,BattRsv=49,BattVoice=true,MinFlight=80,
+                  RxPackMin="7.20",RxPackMax="8.80",MotorSw=123})
+  t.applyOptions(nil)
+  check("nil options resets helicopter",t.OPT.heliType,1)
+  check("nil options resets battery mode",t.OPT.battBarMode,0)
+  check("nil options resets counter",t.OPT.flightCounter,t.FC.ROTORFLIGHT)
+  check("nil options resets reserve",t.OPT.reservePct,20)
+  check("nil options resets battery voice",t.OPT.battVoice,false)
+  check("nil options resets Rx minimum",t.OPT.rxPackMin,6.6)
+  check("nil options resets Rx maximum",t.OPT.rxPackMax,8.4)
+  check("nil options defaults Rx valid",t.OPT.rxPackValid,true)
+  local defaultDuration,defaultMotor=t.config()
+  check("nil options resets minimum duration",defaultDuration,20)
+  check("nil options resets motor source",defaultMotor,99)
   check("complete",true,true)
 end
 __runContracts()

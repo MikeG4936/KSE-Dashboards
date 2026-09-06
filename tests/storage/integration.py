@@ -16,10 +16,11 @@ def instrument(source, scenario):
     if marker < 0 or "useLvgl" not in source[marker:]:
         raise ValueError("Final widget descriptor not found")
     exports = """
-__integration={create=create,update=update,background=background,
+__integration={create=create,update=update,refresh=refresh,background=background,
   clear=clearFrameCache,count=getFlightCount,state=flightStore,A=A,OPT=OPT}
 -- Isolate local-counter wiring from renderer and RF Tool hosting.
 buildUi=function() end
+updateUiState=function() end
 batteryProfiles.service=function() end
 batteryProfiles.flightSourceChanged=function() end
 batteryProfiles.reset=function() end

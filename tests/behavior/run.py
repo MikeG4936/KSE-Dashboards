@@ -16,7 +16,7 @@ calculateAdjustedPercent""".split()
 FUNCTIONS = """clearFrameCache applyOptions tick resetSessionEvidence
 resetSessionStats updateBatteryAlertState resetBatteryAlertState
 updateBatteryHapticTick updateEscBecAlerts updateRxPackAlert tickFlightCount
-timerElapsedSeconds getFlightCount create update""".split()
+timerElapsedSeconds getFlightCount create update refresh get updateMotorAlertGate""".split()
 
 
 def instrument(source: str, variant: str) -> str:
@@ -32,7 +32,8 @@ def instrument(source: str, variant: str) -> str:
                 "theme=function() return C_BG, C_ACCENT, OPT.bgTransparent end"]
     return (HERE.joinpath("mock.lua").read_text() + "\n" + source[:marker]
             + "\n__test={" + ",".join(exports) + "}\n"
-            + 'buildUi=function() end\n__variant="' + variant + '"\n'
+            + 'buildUi=function(w) if w then w.uiBuilt=true; w.ui=w.ui or {} end end\n'
+            + 'updateUiState=function() end\n__variant="' + variant + '"\n'
             + HERE.joinpath("contracts.lua").read_text())
 
 

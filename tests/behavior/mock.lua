@@ -4,11 +4,12 @@ do
   getmetatable(_G).__index = setmetatable({PLAY_NOW=16}, {__index=inherited})
 end
 -- Minimal public EdgeTX API surface; no desktop Lua I/O or package loader.
-__mock = {now=0, values={}, files={}, events={}, timer={value=0,start=0}, modelName="Fixture"}
+__mock = {now=0, values={}, files={}, events={}, timer={value=0,start=0}, modelName="Fixture",fieldCalls={}}
 LCD_W=800; LCD_H=480
 lcd={RGB=function(r,g,b) return r*65536+g*256+b end}
 getTime=function() return __mock.now end
 getFieldInfo=function(name)
+  __mock.fieldCalls[name]=(__mock.fieldCalls[name] or 0)+1
   if name == "SG" or name == 99 then return {id=99,name="SG",desc="Switch G"} end
   local item = __mock.values[name]
   if item then return {id=item.id or name,name=tostring(name)} end
@@ -23,6 +24,7 @@ getSourceValue=function(id)
   local item=__mock.values[id]
   if not item then return nil,false,false end
   if item.throw then error("source temporarily unavailable") end
+  if item.rawFlags then return item.value,item.current,item.fresh end
   return item.value,item.current~=false,item.fresh~=false
 end
 getRSSI=function() return 0 end

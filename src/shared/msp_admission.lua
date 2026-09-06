@@ -16,6 +16,7 @@ function Admission.sample(name)
 end
 
 function Admission.disarmed(wgt)
+  if not WidgetOwner.current(wgt) then return false, "ANOTHER KSE DASHBOARD IS ACTIVE" end
   local reason
   local arm = Admission.sample("ARM")
   local host = _G.rf2
