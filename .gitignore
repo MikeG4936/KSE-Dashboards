@@ -17,6 +17,7 @@
 !/docs/implementation-plan.md
 !/docs/KSE4-KSE5-optimization-review.md
 !/docs/rf-adapter-design.md
+!/docs/telemetry-configuration-audit.md
 
 # Host-side compatibility tooling and fixtures; never copy these to the radio.
 /tools/*
