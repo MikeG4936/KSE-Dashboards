@@ -2897,8 +2897,12 @@ local function updateLowerDashboard(wgt)
     if A.flightSaveError then flightText = flightText .. "  SAVE ERROR" end
     if A.flightSaveError then flightColor = C_RED end
   end
+  -- get arming status
+  local currentState = wgt.profileRfState
+
   if wgt.profileConnectedForDisplay then
-    flightText = flightText .. " - Connected"
+	-- add fc arming status to flightText
+	flightText = flightText .. " - " .. string.upper(currentState)
   end
   setLabel(wgt, ui.flightCount, flightText,
            flightColor)
