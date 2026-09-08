@@ -16,6 +16,7 @@ Each dashboard runs at 800×480, 480×320, and 480×272. Contracts cover:
 - Embedded publication during the callback, exactly one embedded background service per callback, untouched external hosts/queues, and pending owned request removal before pumping while preserving active requests and foreign entries.
 - Separate CSV keys and image lookup for confirmed FC names, retained disconnected identity, local count persistence after identity becomes unresolved, and identified Nitro FC-count admission.
 - Duplicate widgets, cross-variant foreground takeover, and fresh confirmation after TX filename, provider, queue, or host replacement. Immediate callback eligibility is checked before a subsequent KSE callback.
+- Flight-count footer parity for Electric, Nitro and Auto with both counter choices: current/fresh ARM agreement, bit-zero semantics, missing/stale/invalid/contradictory inputs, initial connection, immediate link loss, provider replacement and sub-10-tick foreground/background transitions. OMP omits RF status; armed transitions retain UI objects and add no requests.
 
 The suite replaces `tests/auto_heli_type.lua`, whose desktop debug introspection and active-request cancellation expectations do not apply to the supported implementation. Use the [MSP admission contracts](../msp_admission/README.md) for pinned upstream decoders, continuation stages, and stale callback delivery. Storage recovery and ownership suites cover their broader fault matrices.
 
