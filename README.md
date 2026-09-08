@@ -138,6 +138,8 @@ Wait for KSE to confirm that your selection was saved. If the change is interrup
 
 ### Connection, arming and profile indicators
 
+**ARMED** or **DISARMED** beside the flight count shows the confirmed helicopter state. **CONNECTED** means KSE has a connection but cannot confirm whether the helicopter is armed. The label disappears if the connection is lost.
+
 The top bar shows the active **PID profile / Rate profile**. The battery profile appears above KSE4’s battery bar or inside KSE5’s battery ring.
 
 ### During flight

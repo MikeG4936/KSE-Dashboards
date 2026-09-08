@@ -867,8 +867,8 @@ local function updateLowerDashboard(wgt)
     flightText = flightText .. " - KSE FILE ERROR"
     flightColor = C_RED
   end
-  if wgt.profileConnectedForDisplay then
-    flightText = flightText .. " - Connected"
+  if wgt.profileStatusForDisplay then
+    flightText = flightText .. " - " .. wgt.profileStatusForDisplay
   end
   setLabel(wgt, ui.flightCount, flightText,
            flightColor)

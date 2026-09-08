@@ -788,8 +788,8 @@ local function updateUiState()
     flightText = flightText .. " - KSE FILE ERROR"
     flightColor = C_RED
   end
-  if G.profileConnectedForDisplay then
-    flightText = flightText .. " - Connected"
+  if G.profileStatusForDisplay then
+    flightText = flightText .. " - " .. G.profileStatusForDisplay
   end
   setLabel(V.flightCount, flightText, flightColor)
   local govState = sensors.getGovState()
