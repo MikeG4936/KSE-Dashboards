@@ -123,6 +123,8 @@ OMPHOBBY always uses **KSE Counter**, even when the saved Flight Counter setting
 
 ### RF features while armed
 
+Both dashboards show **ARMED** or **DISARMED** beside the flight count when RF Tool's state agrees with current, fresh `ARM` telemetry. **CONNECTED** means the connection is available but does not confirm disarm. The status clears when the radio link or RF Tool connection is unavailable. This indicator reads existing telemetry; it does not request extra MSP data.
+
 KSE starts new diagnostics, battery-profile requests and FC-count reads only when a live connection and current, fresh `ARM` telemetry confirm disarm, and RF Tool is ready and does not report armed. Discover and retain the `ARM` sensor. The arming-blocker banner clears while armed or when disarm cannot be confirmed, and diagnostics resume after disarm is confirmed again.
 
 Normal telemetry, instruments, battery warnings and local counting continue while armed. The last confirmed FC count stays visible; starting the dashboard while armed may leave profile details and the FC count unavailable until disarm.
