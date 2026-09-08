@@ -40,6 +40,12 @@ Check current FC identity at callback admission as well as at refresh, including
 
 Acceptance is covered by [Auto lifecycle contracts](../tests/auto_type/README.md), [MSP admission contracts](../tests/msp_admission/README.md) and the existing ownership, rendering, storage and compiler gates. Validate 29/30-tick confirmation, stale callbacks between profile stages, same-name provider replacement, manual/Auto transitions, strict fractional-option rejection, FC-name counts and all three display sizes. Real-radio name timing, memory, UI, SD and RF behavior remain in slice 6.
 
+## Flight-count arming-status contract
+
+Both footer renderers consume the shared engine's display status. A live radio link and ready current RF provider are required. `ARMED` or `DISARMED` requires agreement between the current host state and valid, current, fresh ARM bit 0; uncertain or contradictory ARM evidence leaves the neutral `CONNECTED` label. Missing or initializing host state and link/provider loss clear the label. OMP omits RF status. This display calculation does not invoke admission decisions or request MSP data; status changes invalidate retained text even between telemetry samples and across background/foreground transitions.
+
+RF Tool [updates armed/disarmed state on ARM changes](https://github.com/rotorflight/rotorflight-lua-scripts/blob/aaacfe68407c09d49a26c5aa326c00119b378bb0/src/WIDGETS/RfTool/app.lua#L66-L89) and [retains its state through short RSSI outages](https://github.com/rotorflight/rotorflight-lua-scripts/blob/aaacfe68407c09d49a26c5aa326c00119b378bb0/src/SCRIPTS/RF2/background.lua#L31-L36). The footer therefore checks live link and the [EdgeTX current/fresh source flags](https://github.com/EdgeTX/edgetx/blob/1511b3f29152f18c704f1f89b3608e0f71317de9/radio/src/lua/api_general.cpp#L748-L768) instead of presenting cached RF state as current. [Auto/footer lifecycle contracts](../tests/auto_type/README.md) cover both variants, counter choices and all three display sizes. Physical rendering and radio timing remain part of slice 6.
+
 ## Assessment
 
 The highest-value improvements are correctness and lifecycle fixes, followed by making the functional engine identical between variants. The existing 10 Hz sampling, numeric sensor-ID cache, retained LVGL objects, and changed-property updates are sensible. A wholesale rendering rewrite or more aggressive polling is not justified.

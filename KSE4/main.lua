@@ -3067,8 +3067,8 @@ local function updateUiState()
     flightText = flightText .. " - KSE FILE ERROR"
     flightColor = C_RED
   end
-  if G.profileConnectedForDisplay then
-    flightText = flightText .. " - Connected"
+  if G.profileStatusForDisplay then
+    flightText = flightText .. " - " .. G.profileStatusForDisplay
   end
   setLabel(V.flightCount, flightText, flightColor)
   local govState = sensors.getGovState()
@@ -4698,6 +4698,24 @@ local function profileControllerConnected(wgt)
          and (state == "connected" or state == "armed" or state == "disarmed")
 end
 
+local function profileDisplayStatus(rfToolNeeded)
+  if not rfToolNeeded or not profileRadioLinkLive() or not profileSharedQueue() then return nil end
+  local shared = profileRfToolProvider()
+  local host = shared and shared.widget
+  local state = type(host) == "table" and host.state or nil
+  if host == nil and profileRfToolInstanceLive() == shared then state = "connected" end
+  if state == "connected" then return "CONNECTED" end
+  if state ~= "armed" and state ~= "disarmed" then return nil end
+  -- RF Tool can retain an earlier ARM value. Only label its arm state when
+  -- current, fresh telemetry agrees; CONNECTED alone does not confirm disarm.
+  local arm = MspAdmission.sample("ARM")
+  if arm and arm >= 0 and arm <= 255 and arm <= math.floor(arm) then
+    if arm % 2 == 1 and state == "armed" then return "ARMED" end
+    if arm % 2 == 0 and state == "disarmed" then return "DISARMED" end
+  end
+  return "CONNECTED"
+end
+
 local function profileOnlyConfigured(wgt)
   if not wgt.profileCapacitiesReady
      or not wgt.profileCapacitiesComplete
@@ -4730,6 +4748,9 @@ local function profileResetConnection(wgt)
   wgt.profileWasConnected = false
   wgt.profileConnectedForDisplay = false
   G.profileConnectedForDisplay = false
+  if wgt.profileStatusForDisplay then wgt.kseUiDirty = true end
+  wgt.profileStatusForDisplay = nil
+  G.profileStatusForDisplay = nil
   wgt.profileAutoShown = false
   wgt.profileSingleConfigured = nil
   wgt.profileInitialReadRequested = false
@@ -5002,6 +5023,10 @@ local function serviceBatteryProfileFeature(wgt, allowUi, event, touchState)
   local showConnected = rfToolNeeded and connected or false
   G.profileConnectedForDisplay = showConnected
   wgt.profileConnectedForDisplay = showConnected
+  local displayStatus = profileDisplayStatus(rfToolNeeded)
+  if displayStatus ~= wgt.profileStatusForDisplay then wgt.kseUiDirty = true end
+  wgt.profileStatusForDisplay = displayStatus
+  G.profileStatusForDisplay = displayStatus
   if profileEligible and connected then
     wgt.profileDisconnectedSince = nil
     if not wgt.profileWasConnected then

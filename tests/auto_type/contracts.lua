@@ -330,4 +330,70 @@ eq(other.audit.AUTO_HELI.ready,false,"takeover requires fresh confirmation")
 __mock.now=__mock.now+30;other.background(otherWidget)
 eq(other.audit.AUTO_HELI.ready,true,"new owner confirms FC identity")
 eq(other.audit.AUTO_HELI.name,"Owner Nitro","new owner uses FC name")
-print(tostring(assertions).." Auto lifecycle assertions; real render callbacks exercised")
+-- Footer status must update independently of the 10 Hz telemetry cadence.
+local function footer(t, expected, message)
+  eq(t.widget.profileStatusForDisplay,expected,message.." shared status")
+  local found
+  for _,item in ipairs(t.labels) do
+    local text=item.properties.text
+    if type(text)=="function" then text=text() end
+    if not item.hidden and type(text)=="string" then
+      local suffix=string.match(text," %- (ARMED)$")
+        or string.match(text," %- (DISARMED)$") or string.match(text," %- (CONNECTED)$")
+      if suffix then found=suffix end
+    end
+  end
+  eq(found,expected,message.." rendered status")
+end
+for _,mode in ipairs({1,2,4}) do
+  for counter=1,2 do
+    local f=fixture(mode,counter)
+    f:connect("Footer Nitro");f:settle(true)
+    footer(f,"DISARMED","confirmed disarm")
+    local builds=f.builds
+    local requests=#f.requests
+    f.host.state="armed";__mock.values.ARM.value=1;f:step(true,1)
+    footer(f,"ARMED","arm before next telemetry sample")
+    eq(#f.requests,requests,"armed footer adds no request")
+    eq(f.builds,builds,"arm status retains UI objects")
+    f.host.state="disarmed";f:step(true,1)
+    footer(f,"CONNECTED","contradictory host does not claim disarm")
+    __mock.values.ARM.value=2;f:step(true,1)
+    footer(f,"DISARMED","only ARM bit zero denotes arming")
+    __mock.values.ARM.fresh=false;f:step(true,1)
+    footer(f,"CONNECTED","stale ARM")
+    __mock.values.ARM.fresh=true;__mock.values.ARM.current=false;f:step(true,1)
+    footer(f,"CONNECTED","noncurrent ARM")
+    __mock.values.ARM.current=true
+    for _,value in ipairs({-1,0.5,256,"invalid"}) do
+      __mock.values.ARM.value=value;f:step(true,1)
+      footer(f,"CONNECTED","invalid ARM byte "..tostring(value).." mode "..mode.." counter "..counter)
+    end
+    local sensor=__mock.values.ARM;__mock.values.ARM=nil;f:step(true,1)
+    footer(f,"CONNECTED","missing ARM")
+    __mock.values.ARM=sensor;sensor.value=0
+    f.host.state="connected";f:step(true,1)
+    footer(f,"CONNECTED","initial RF connection is not confirmed disarm")
+    f.host.state="disarmed";f:step(true,1)
+    f.rssi=0;f:step(true,1)
+    footer(f,nil,"link loss clears retained host state immediately")
+    f.rssi=100;f:step(true,1)
+    footer(f,"DISARMED","link recovery")
+    f.host.state=nil;f:step(true,1)
+    footer(f,nil,"missing live host state cannot reuse cached state")
+    f.host.state="initializing";f:step(true,1)
+    footer(f,nil,"initializing host")
+    f.host.state="disarmed";f:step(true,1)
+    f.host.state="armed";sensor.value=1;f:step(false,1);f:step(true,1)
+    footer(f,"ARMED","background transition renders on foreground return")
+    rf2=nil;f:step(true,1)
+    footer(f,nil,"removed provider")
+    rf2={apiVersion=12.09,rfToolApiVersion=1,widget={state="initializing"},
+      mspQueue=f.queue,registerWidget=function() end}
+    f:step(true,1);footer(f,nil,"replacement provider")
+  end
+end
+local omp=fixture(3,2);omp:connect("M2 Fixture");omp:settle(true)
+footer(omp,nil,"OMP does not display RF state")
+eq(#omp.requests,0,"OMP footer does not start RF work")
+print(tostring(assertions).." Auto/footer lifecycle assertions; real render callbacks exercised")
