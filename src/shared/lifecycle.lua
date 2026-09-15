@@ -131,6 +131,7 @@ function G.initializeOwner(widget)
   flightCache = flightStore.cache
   for key in pairs(widget) do
     if key ~= "zone" and key ~= "options" and key ~= "kseOwnerEpoch"
+       and key ~= "kseModelFile" and key ~= "kseModelEpoch"
        and key ~= "profileOperationToken" and key ~= "armingStatusToken" then widget[key] = nil end
   end
   local created = createOwned(widget.zone, widget.options)
@@ -144,6 +145,7 @@ function G.initializeOwner(widget)
 end
 local function create(zone, options)
   local widget = {zone=zone, options=options or {}}
+  widget.kseModelFile, widget.kseModelEpoch = WidgetOwner.context()
   if WidgetOwner.claim(widget, false) then G.initializeOwner(widget) end
   return widget
 end

@@ -23,6 +23,7 @@
                profileCapacities={1000,2000,3000,4000,5000,6000}}
     if api.owner then
       __mock.now=__mock.now+500
+      if api.owner.context then wgt.kseModelFile,wgt.kseModelEpoch=api.owner.context() end
       assert(api.owner.claim(wgt,true),"picker fixture owner claim failed")
     end
     if api.disarmed then

@@ -73,7 +73,10 @@ local function setup(mode,counter,external)
     profileInitialReadFinished=true,profileCapacityReadFinished=true,
     profileInitialReadValid=true,profileActive=1,profileAutoShown=true,
     profileConnectReadyAt=0,armingStatusNextAt=1000000}
+  w.kseModelFile,w.kseModelEpoch=api.owner.context()
   assert(api.owner.claim(w,false),"fixture owner claim failed")
+  -- Mirror the lifecycle hook so model retirement uses the real cleanup path.
+  w.kseRevoke=function() api.profiles.retire(w) end
   if not external then api.owner.host(rf2.widget,rf2) end
   api.profiles.flightSourceChanged(w)
   return api,w,rf2.mspQueue
@@ -293,7 +296,7 @@ eq("full disarmed selected profile",w.profileActive,2)
 eq("full disarmed completes operation",w.profileOperation,nil)
 
 local identities={
- {"same-name different model filename",function() env.filename="other-model.yml" end},
+ {"same-name different model filename",function() env.filename="other-model.yml" end,recreatesWidget=true},
  {"same-provider replacement queue",function()
     rf2.mspQueue=dofile(upstreamPath.."/mspQueue.lua")
   end},
@@ -490,7 +493,14 @@ for _,case in ipairs(identities) do
     eq("Auto "..case[1].." retires old operation",widget.profileOperation,nil)
     eq("Auto "..case[1].." retains old active object",queue.currentMessage==ownedMessage,true)
     eq("Auto "..case[1].." never clears transport",env.clearCalls,0)
-    eq("Auto "..case[1].." requires name reconfirmation",api.AUTO_HELI.ready,false)
+    if case.recreatesWidget then
+      -- The old widget cannot prepare a new model. Actual widget recreation and
+      -- fresh name confirmation are exercised by the Auto lifecycle suite.
+      eq("Auto "..case[1].." retires old ownership",api.owner.current(widget),false)
+      eq("Auto "..case[1].." invalidates confirmed name",api.AUTO_HELI.current(),false)
+    else
+      eq("Auto "..case[1].." requires name reconfirmation",api.AUTO_HELI.ready,false)
+    end
   end
 end
 

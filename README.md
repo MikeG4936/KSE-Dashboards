@@ -42,7 +42,7 @@ Keep all files and the `BatterySounds/` folder together. Do not rename the dashb
 
 ### 3. Add one widget and set the essentials
 
-Add **KSE4 or KSE5** to a full-screen telemetry page. Configure **only one KSE widget across all telemetry screens**. Turn off EdgeTX trim sliders and the page’s top bar to give the dashboard the full area.
+Add **KSE4 or KSE5** to a full-screen telemetry page. Configure **only one KSE widget per model, across all its telemetry screens**. Turn off EdgeTX trim sliders and the page’s top bar to give the dashboard the full area.
 
 Open the widget settings and select:
 
@@ -245,7 +245,7 @@ The first five names are required. In manual **OMPHOBBY** mode, include **M1** o
 | Widget is missing | Check `/WIDGETS/KSE4/main.lua` or `/WIDGETS/KSE5/main.lua`, including capitalization; restart EdgeTX. |
 | Old behavior remains after updating | Remove old `main.luac` from the KSE folder and restart. |
 | How do I switch between KSE4 and KSE5? | You may keep both folders on the SD card. Remove the active widget, wait at least five seconds, then add/open the other dashboard. |
-| `Another KSE dashboard is active` | Remove the other KSE widget across all telemetry pages, wait at least five seconds, then reopen the desired dashboard. |
+| `Another KSE dashboard is active` | Remove the extra KSE widget from the selected model’s telemetry pages, wait at least five seconds, then reopen the desired dashboard. KSE widgets on other saved models can stay. |
 | Do I need a visible RF Tool widget or `rf2bg`? | No. Install the complete RF Tool package for Rotorflight models, but you do not need it on a telemetry screen. Disable any `rf2bg` special/global function. |
 | `INSTALL RF TOOL` or no RF connection | Check that RfTool, RfStats and `/SCRIPTS/RF2/` came from the same compatible 2.3 package; check the FC connection and firmware. |
 | `--`, `NO DATA` or missing sensors | Connect the helicopter, open KSE once, then discover sensors and check their names. See [telemetry setup](#4-configure-and-discover-telemetry) if readings are missing. |

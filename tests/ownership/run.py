@@ -33,7 +33,8 @@ updateUiState=function() __ownershipMetrics.draw=__ownershipMetrics.draw+1 end
 batteryProfiles.service=function() __ownershipMetrics.rf=__ownershipMetrics.rf+1 end
 """
     exports = ("return { audit={OPT=OPT,A=A,D=D,S=S,G=G,store=flightStore,"
-               "count=getFlightCount,profiles=batteryProfiles,metrics=__ownershipMetrics},")
+               "count=getFlightCount,profiles=batteryProfiles,owner=WidgetOwner,"
+               "metrics=__ownershipMetrics},")
     return source[:marker] + hooks + source[marker:].replace("return {", exports, 1)
 
 
@@ -46,8 +47,10 @@ def main():
         for variant in ("KSE4", "KSE5"):
             work.joinpath(variant + ".lua").write_text(instrument(ROOT.joinpath(variant, "main.lua").read_text()))
         failures = []
-        for owner, contender, same_api in PAIRS:
-            label = f"{owner}/{contender}/" + ("same-module" if same_api else "separate-modules")
+        for contract, owner, contender, same_api in (
+                (contract, *pair) for contract in ("contracts.lua", "model_switch.lua")
+                for pair in PAIRS):
+            label = f"{contract}/{owner}/{contender}/" + ("same-module" if same_api else "separate-modules")
             fixture = work / "contracts.lua"
             fixture.write_text("dashboardDir=" + json.dumps(str(work))
                 + "\nownerVariant=" + json.dumps(owner)
@@ -55,7 +58,7 @@ def main():
                 + "\nsameModule=" + ("true" if same_api else "false") + "\n"
                 + ROOT.joinpath("tests/behavior/mock.lua").read_text() + "\n"
                 + ROOT.joinpath("tests/storage/mock.lua").read_text() + "\n"
-                + HERE.joinpath("contracts.lua").read_text())
+                + HERE.joinpath(contract).read_text())
             result = subprocess.run([str(args.runner.resolve()), str(fixture)], text=True,
                                     capture_output=True, timeout=60)
             if result.returncode:

@@ -262,7 +262,16 @@ local ra=replaced.audit
 ra.A.rxDeadVoiceLatched=true
 __mock.modelFilename="other.yml"
 eq(ra.AUTO_HELI.current(),false,"TX filename change invalidates callback eligibility immediately")
-replaced:step(false);eq(ra.AUTO_HELI.ready,false,"TX filename change restarts confirmation")
+local oldModelWidget=replaced.widget
+replaced:step(false)
+eq(ra.owner.current(oldModelWidget),false,"previous model widget loses ownership")
+eq(oldModelWidget.kseInitialized,false,"previous model background retires the old session")
+eq(ra.A.rxDeadVoiceLatched,true,"previous model background cannot start the new session")
+-- EdgeTX recreates widgets when selecting a saved model while Lua globals live on.
+replaced.widget=replaced.api.create({x=0,y=0,w=LCD_W,h=LCD_H},replaced.opts)
+replaced:step(true,1)
+eq(ra.owner.current(replaced.widget),true,"new model foreground owns before lease expiry")
+eq(ra.AUTO_HELI.ready,false,"recreated model widget restarts confirmation")
 replaced:settle(false)
 eq(ra.AUTO_HELI.ready,true,"new TX filename confirms")
 eq(ra.A.rxDeadVoiceLatched,false,"new TX filename resets session")
