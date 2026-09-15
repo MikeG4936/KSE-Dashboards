@@ -16,7 +16,9 @@ service are replaced by counters; the actual picker closure and MSP admission
 functions remain available to test stale ownership.
 
 Six pairings cover two widgets using one loaded KSE4 or KSE5 module, separate loads
-of the same variant, and KSE4/KSE5 in both ownership orders. Assertions cover:
+of the same variant, and KSE4/KSE5 in both ownership orders. Each pairing runs the
+ordinary ownership and saved-model lifecycle fixtures in separate fresh processes.
+Assertions cover:
 
 - Initial ownership, ordinary local threshold counting and persistence.
 - Duplicate creation and option updates preserving the active options, alerts,
@@ -34,6 +36,17 @@ of the same variant, and KSE4/KSE5 in both ownership orders. Assertions cover:
   original widget and it starts a new operation.
 - Active-owner model changes preserving independent counts, and transfer of an
   unsaved qualified count through the shared store without recounting it.
+- Saved-model filename changes recreating widgets and allowing immediate takeover
+  on the new model's first foreground refresh. Creation and background callbacks
+  cannot take over, and a second contender cannot reuse the model-switch shortcut.
+- Old-model callbacks and provider state events becoming inactive as soon as a
+  changed filename is observed, before the new foreground callback. Pending owned
+  requests retire while active upstream transactions and foreign entries remain.
+- A-to-B-to-A switches rejecting obsolete A widget sessions, picker closures and
+  acknowledgments even when the saved filename matches again or the lease expires.
+- Display-name edits retaining ordinary ownership for the same saved filename;
+  missing or invalid filenames from the outset retaining the five-second fallback.
+  A transient missing filename cannot renew an already known owner's lease.
 
 The fixture models deletion/suspension as absence of the old owner's callbacks;
 EdgeTX has no widget deletion callback in this descriptor. It does not reproduce

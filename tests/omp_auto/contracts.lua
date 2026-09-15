@@ -348,6 +348,14 @@ eq(modelSwap.audit.OMP_AUTO.ready,true,"radio display-name edit preserves identi
 eq(modelSwap.audit.name(),"OMP M1","radio display-name edit cannot select aircraft")
 eq(modelSwap.audit.A.flightDeadVoiceLatched,true,"radio display-name edit preserves alerts")
 __mock.modelFilename="replacement.yml";modelSwap:step(false,1)
+local oldModelWidget=modelSwap.widget
+eq(modelSwap.audit.owner.current(oldModelWidget),false,"previous saved model widget loses ownership")
+eq(oldModelWidget.kseInitialized,false,"previous saved model background retires the old session")
+eq(modelSwap.audit.A.flightDeadVoiceLatched,true,"previous saved model background cannot reset new session")
+-- Saved-model selection recreates the widget; the dashboard Lua state survives.
+modelSwap.widget=modelSwap.api.create({x=0,y=0,w=LCD_W,h=LCD_H},modelSwap.opts)
+modelSwap:step(true,1)
+eq(modelSwap.audit.owner.current(modelSwap.widget),true,"new saved model foreground owns immediately")
 eq(modelSwap.audit.OMP_AUTO.ready,false,"saved model change restarts identity")
 eq(modelSwap.audit.count(),nil,"saved model change suppresses counter")
 modelSwap:settle(false)

@@ -6,16 +6,40 @@ if type(registry) ~= "table" then
   _G.__KSE_WIDGET_OWNER_V1 = registry
 end
 
-function Owner.current(widget)
-  return widget ~= nil and registry.widget == widget
-     and widget.kseOwnerEpoch == registry.epoch
+-- Widget Lua globals survive model selection, but EdgeTX recreates the widgets.
+-- Observe the actual saved filename, never the editable display/FC name. Keep
+-- a generation as well so an old A widget cannot revive after A -> B -> A.
+function Owner.context()
+  local ok, info = pcall(model.getInfo)
+  local file = ok and type(info) == "table" and info.filename or nil
+  if type(file) ~= "string" or file == "" then file = nil end
+  if file and registry.modelFile ~= file then
+    registry.modelFile = file
+    registry.modelEpoch = (registry.modelEpoch or 0) + 1
+    local previous = registry.widget
+    if previous and previous.kseModelFile and type(previous.kseRevoke) == "function" then
+      previous.kseRevoke()
+    end
+  end
+  return file, registry.modelEpoch or 0
+end
+
+function Owner.current(widget, file, modelEpoch)
+  if widget == nil or registry.widget ~= widget
+     or widget.kseOwnerEpoch ~= registry.epoch then return false end
+  if modelEpoch == nil then file, modelEpoch = Owner.context() end
+  return widget.kseModelFile == file and widget.kseModelEpoch == modelEpoch
 end
 
 function Owner.claim(widget, mayTakeOver)
+  local file, modelEpoch = Owner.context()
+  if widget.kseModelFile ~= file or widget.kseModelEpoch ~= modelEpoch then return false end
   local now = (getTime and getTime()) or 0
-  if Owner.current(widget) then registry.seen=now; return true end
+  if Owner.current(widget, file, modelEpoch) then registry.seen=now; return true end
   if registry.widget and not mayTakeOver then return false end
-  if registry.widget and now >= (registry.seen or now)
+  local changedModel = registry.widget and file and registry.widget.kseModelFile
+                       and registry.widget.kseModelEpoch ~= modelEpoch
+  if registry.widget and not changedModel and now >= (registry.seen or now)
      and now - (registry.seen or now) < Owner.leaseTicks then return false end
   local previous = registry.widget
   if previous and type(previous.kseRevoke) == "function" then previous.kseRevoke() end
@@ -51,7 +75,8 @@ function Owner.register(provider)
 end
 
 function Owner.blocked(widget)
-  if widget.kseBlockedDrawn or not lvgl then return end
+  if widget.kseModelEpoch ~= (registry.modelEpoch or 0)
+     or widget.kseBlockedDrawn or not lvgl then return end
   lvgl.clear()
   lvgl.label({x=8,y=8,w=math.max(1,((widget.zone or {}).w or LCD_W or 480)-16),
     text="Another KSE dashboard is active.\nRemove it, then reopen this screen.",
