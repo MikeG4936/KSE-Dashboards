@@ -52,6 +52,10 @@ Use review subagents for substantive RF/safety changes and shared-engine extract
 
 **Done when:** the review's relevant validation matrix is satisfied on the supported firmware/radio combinations, including the smallest-memory target; memory and instruction margins are recorded; repeated lifecycle operations show bounded retained memory; RF traces confirm the chosen scheduling policy. Any claimed latency gain has a measured basis. All preceding hardware checkpoints and substantive review findings are resolved, or the handoff explicitly identifies why final transmitter validation remains incomplete.
 
+## OMP Auto extension
+
+For the OMP Auto extension, use the [OMP identity contract](omp-auto-identification-feasibility.md#omp-auto-implementation-contract) and [OMP lifecycle fixtures](../tests/omp_auto/README.md) alongside slices 5–6. Preserve manual modes and Rotorflight Auto, validate identity before counting/layout, and retain the standalone-folder and ten-option contracts. Require existing behavior/Auto/MSP/ownership/render checks, both EdgeTX compiler/resource comparisons, independent compatibility review, and separate transmitter validation of both helicopters and reconnects.
+
 ## Slice handoff
 
 For each slice, record the concrete behavior change, affected findings, commit, reproducible checks and results, resource deltas, review findings resolved, and any outstanding hardware checks. Keep this in the task/PR handoff rather than appending a running journal to project instructions. Update the README for shipped behavior and maintain the review as dated evidence rather than presenting its original measurements as current forever.

@@ -748,6 +748,7 @@ local function updateRing(wgt, index, value, unit, footer, progress, color,
 end
 
 local function batteryFooter()
+  if OPT.ompAuto and not OMP_AUTO.ready then return "OMP AUTO" end
   if not OPT.simTelemetry and A.motorConfigError then
     return G.compact and "SET MOTOR SW" or "SET MOTOR SWITCH"
   end
@@ -769,6 +770,7 @@ local function batteryFooter()
 end
 
 local function batteryInvalidMessage()
+  if OPT.ompAuto and not OMP_AUTO.ready then return OMP_AUTO.status end
   if OPT.autoHeliType and not AUTO_HELI.ready then
     if G.compact then
       if AUTO_HELI.status == "AUTO DISCONNECTED" then return "DISCONNECTED" end
@@ -799,6 +801,7 @@ local function updateRings(wgt)
     batteryPct = A.displayPercentInit and A.displayPercent or D.adjustedPercent
   end
   if OPT.autoHeliType and not AUTO_HELI.ready then batteryValid = false end
+  if OPT.ompAuto and not OMP_AUTO.ready then batteryValid = false end
   updateRing(wgt, 1, tostring(math.floor(batteryPct or 0)), "%",
     batteryFooter(), (batteryPct or 0) / 100,
     batteryColor(batteryPct), batteryValid, C_DIM,
@@ -921,6 +924,7 @@ end
 -- its sole profile transport so it never competes for telemetry frames.
 -- @include shared:rf.lua
 -- @include shared:auto_heli.lua
+-- @include shared:omp_auto.lua
 local function buildUi(wgt)
   if not lvgl then wgt.uiBuilt = false; return end
   lvgl.clear()
@@ -991,7 +995,7 @@ local options = {
     } },
   { "TxBatt",    CHOICE, 1, { "LiPo", "Li-Ion" } },
   { "MinFlight", VALUE, TOPBAR_MIN_DUR_DEFAULT, -30, 120 },
-  { "HeliType",  CHOICE, 1, { "Electric", "Nitro", "OMPHOBBY", "Auto Elec/Nitro" } },
+  { "HeliType",  CHOICE, 1, { "Electric", "Nitro", "OMPHOBBY", "Auto Elec/Nitro", "OMP Auto" } },
   { "BattRsv",   VALUE, 20, 0, 50 },
   { "BattVoice", BOOL, 0 },
   { "RxPackMin", STRING, "6.60" },

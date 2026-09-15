@@ -430,6 +430,8 @@ local AUTO_HELI = {
   option=4, confirmTicks=30, ready=false, name=nil,
   status="WAITING FOR FC NAME",
 }
+-- OMP Auto is independent of Rotorflight's FC-name provider.
+local OMP_AUTO = {option=5, confirmTicks=50, ready=false, status="CONNECT OMP"}
 function AUTO_HELI.infer(name)
   name = type(name) == "string" and string.upper(name):gsub("%s+$", "") or ""
   if name:sub(-1) == "N" or name:sub(-5) == "NITRO" then
@@ -445,6 +447,7 @@ function AUTO_HELI.providerName(provider)
 end
 local OPT = {
   autoHeliType = false,
+  ompAuto      = false,
   heliType     = HELI_ELECTRIC,
   battBarMode   = 0,
   reservePct    = 0,
@@ -631,10 +634,12 @@ local function applyOptions(opts)
     -- RPM telemetry validates what a movement means; other sensors auto-detect.
     SRC.motorSwitch = opts.MotorSw or opts["Motor Switch"]
                       or defaultMotorSwitch
-    -- Heli Type CHOICE (1-based): Electric=1, Nitro=2, OMPHOBBY=3, Auto Elec/Nitro=4.
+    -- Append OMP Auto=5 without moving existing choices or option slots.
     -- OMPHOBBY shares the percentage bar but has its own telemetry contract.
     local bb = tonumber(opts.HeliType or opts["Heli Type"]) or 1
-    if not (bb >= 1 and bb <= 4) or bb > math.floor(bb) then bb = 1 end
+    if not (bb >= 1 and bb <= OMP_AUTO.option) or bb > math.floor(bb) then bb = 1 end
+    OPT.ompAuto = bb == OMP_AUTO.option
+    if OPT.ompAuto then bb = HELI_OMPHOBBY end
     local automatic = bb == AUTO_HELI.option
     if automatic then
       bb = OPT.heliType == HELI_NITRO and HELI_NITRO or HELI_ELECTRIC
@@ -951,6 +956,7 @@ local function get(name)
     local cached = RESOLVED[key]
     -- Motor-stop evidence cannot use an id cached before sensor discovery.
     local immediate = name == "ARM" or name == "Gov" or name == "Hspd" or name == "RPM"
+                      or (OPT.ompAuto and name == "RxBt")
     if immediate or not cached or now < cached.tick or now - cached.tick >= 100 then
       local ok, info = pcall(getFieldInfoFn, name)
       cached = cached or {}
@@ -988,7 +994,8 @@ local function getModelName()
   local v = F.modelName
   if v ~= nil then return v end
   local info = getModelInfo()
-  local n = OPT.autoHeliType and AUTO_HELI.name or (info and info.name or nil)
+  local n = OPT.ompAuto and (OMP_AUTO.name or "OMP AUTO")
+            or (OPT.autoHeliType and AUTO_HELI.name or (info and info.name or nil))
   if not n or n == "" then n = "MODEL" end
   v = (string.gsub(n, ",", " "))
   F.modelName = v
@@ -1070,7 +1077,13 @@ end
 function sensors.getCellCount()
   local v = F.cellCount
   if v ~= nil then return v end
-  if OPT.heliType == HELI_OMPHOBBY then
+  if OPT.ompAuto then
+    v = OMP_AUTO.ready and OMP_AUTO.cells or 0
+    if v == 2 then
+      D.isLiHV = true
+      A.liHvHighSamples = SAFETY.liHvConfirmSamples
+    end
+  elseif OPT.heliType == HELI_OMPHOBBY then
     -- OMP receivers do not stream cell count. Model names containing M2 are
     -- 3S; names containing M1 are 2S LiHV (8.5-8.7 V fully charged). Match
     -- case-insensitively anywhere and make the M1 chemistry deterministic
@@ -1962,6 +1975,7 @@ local function getTimer1Secs()
   return v
 end
 local function getFlightCount()
+  if OPT.ompAuto and not OMP_AUTO.ready then return nil end
   if OPT.flightCounter == FC.ROTORFLIGHT then return FC.count end
   return flightStore.cache and modelFlights or nil
 end
@@ -2376,7 +2390,8 @@ updateMotorAlertGate = function(now, governorMode, headRpm)
   end
 end
 local function tickFlightCount()
-  if OPT.simTelemetry or (OPT.autoHeliType and not AUTO_HELI.ready) then return end
+  if OPT.simTelemetry or (OPT.autoHeliType and not AUTO_HELI.ready)
+     or (OPT.ompAuto and not OMP_AUTO.ready) then return end
   local thisModel = modelKey(getModelName())
   if flightModel ~= thisModel then
     flightModel = thisModel
@@ -2390,6 +2405,9 @@ local function tickFlightCount()
     timerThresholdArmed = nil
     resetSessionStats()
     resetSessionEvidence()
+    -- Layout may already have sampled this newly selected aircraft. Its cached
+    -- values must not outlive the validity flags cleared by the session reset.
+    clearFrameCache()
   end
   if OPT.flightCounter ~= FC.RADIO then return end
   local t = getTimer0()
@@ -2876,6 +2894,14 @@ end
 local function updateBottom()
   local B = V.bottom
   if not B then return end
+  if OPT.ompAuto and not OMP_AUTO.ready then
+    setLabel(B.header, OMP_AUTO.status, C_YELLOW)
+    setVisible(B.fill, false)
+    setLabel(B.center, "OMP · WAIT", C_YELLOW, B.x, B.textY, B.w,
+             G.fontBattery, CENTERED)
+    setVisible(B.center, true)
+    return
+  end
   if OPT.autoHeliType and not AUTO_HELI.ready then
     setLabel(B.header, AUTO_HELI.status or "WAITING FOR FC NAME", C_YELLOW)
     setVisible(B.fill, false)
@@ -5276,6 +5302,154 @@ function AUTO_HELI.sync(widget, name, waitingStatus)
   if not wasReady then A.lastDataTick = -1 end
 end
 -- END SHARED auto_heli.lua
+-- BEGIN SHARED omp_auto.lua
+-- OFS3 CRSF: RxBt is pack voltage; Volt is RxBt/2 on M1 and RxBt/3
+-- on M2 (OFS3 User Guide R6, p29). This does not identify individual aircraft.
+function OMP_AUTO.reset()
+  OMP_AUTO.ready, OMP_AUTO.cells, OMP_AUTO.name = false, nil, nil
+  OMP_AUTO.status, OMP_AUTO.model = "CONNECT OMP", nil
+  OMP_AUTO.candidate, OMP_AUTO.since, OMP_AUTO.lastTick = nil, nil, nil
+  OMP_AUTO.packId, OMP_AUTO.cellId, OMP_AUTO.rpmId = nil, nil, nil
+  OMP_AUTO.recheck = true
+end
+
+function OMP_AUTO.display(widget, ready, status)
+  if OMP_AUTO.ready ~= ready or OMP_AUTO.status ~= status then
+    if OMP_AUTO.ready and not ready then timerThresholdArmed = nil end
+    OMP_AUTO.ready, OMP_AUTO.status = ready, status
+    A.lastDataTick, widget.kseUiDirty = -1, true
+    clearFrameCache()
+  end
+end
+
+-- Resolve the current slot each time. Cached display metadata must not let
+-- deleted/reused sensor slots establish a new aircraft identity. "telem1"
+-- supplies EdgeTX's source base without hard-coding radio-specific indexes.
+function OMP_AUTO.sensor(name, base)
+  if not getFieldInfoFn or type(model.getSensor) ~= "function" or not base then return end
+  local ok, field = pcall(getFieldInfoFn, name)
+  if not ok or type(field) ~= "table" or type(field.id) ~= "number" then return end
+  local index = (field.id - base) / 3
+  if index < 0 or index ~= math.floor(index) then return end
+  local valid, sensor = pcall(model.getSensor, index)
+  if not valid or type(sensor) ~= "table" or sensor.type ~= 0
+     or sensor.name ~= name
+     or sensor.unit ~= (name == "RPM" and _G.UNIT_RPMS or _G.UNIT_VOLTS)
+     or sensor.instance ~= 0 or type(sensor.id) ~= "number" then return end
+  -- Voltage-array telemetry uses pseudo sensor id FE, not wire frame id 0E.
+  if name == "RxBt" then
+    if sensor.id ~= 0x08 then return end
+  elseif name == "RPM" then
+    if sensor.id < 0x0C or sensor.id > 0xFF0C or sensor.id % 256 ~= 0x0C then return end
+  elseif sensor.id < 0x80FE or sensor.id > 0xFFFE or sensor.id % 256 ~= 0xFE then
+    return
+  end
+  local value, current, fresh = get(field.id)
+  value = tonumber(value)
+  if current and fresh and value and value >= 0 then return value, field.id end
+end
+
+-- Scan only when starting/finishing confirmation, never in steady flight.
+-- Empty slots are tables; the first out-of-range index returns nil in EdgeTX.
+function OMP_AUTO.uniqueSources()
+  local pack, cell, rpm = 0, 0, 0
+  for index = 0, 255 do
+    local ok, sensor = pcall(model.getSensor, index)
+    if not ok then return false end
+    if sensor == nil then return pack == 1 and cell == 1 and rpm == 1 end
+    if type(sensor) ~= "table" then return false end
+    if sensor.name == "RxBt" then pack = pack + 1 end
+    if sensor.name == "Volt" then cell = cell + 1 end
+    if sensor.name == "RPM" then rpm = rpm + 1 end
+    if pack > 1 or cell > 1 or rpm > 1 then return false end
+  end
+  return false
+end
+
+function OMP_AUTO.sync(widget)
+  if not OPT.ompAuto then return end
+  local info = getModelInfo()
+  local identity = info and (info.filename or info.name)
+  if identity ~= OMP_AUTO.model then
+    OMP_AUTO.reset()
+    OMP_AUTO.model = identity
+    resetSessionStats()
+    resetSessionEvidence()
+    timerThresholdArmed = nil
+    clearFrameCache()
+    widget.layoutSignature = nil
+  end
+  local now = frameNow()
+  local last = OMP_AUTO.lastTick
+  if last and now >= last and now - last < 10
+     and (not OMP_AUTO.since or now - OMP_AUTO.since < OMP_AUTO.confirmTicks) then return end
+  OMP_AUTO.lastTick = now
+  local ok, rssi = pcall(getRSSI)
+  local live = ok and type(rssi) == "number" and rssi > 0
+  local valid, base = pcall(getFieldInfoFn, "telem1")
+  base = valid and type(base) == "table" and base.id or nil
+  local rpm, rpmId
+  if live then rpm, rpmId = OMP_AUTO.sensor("RPM", base) end
+  local stopped = rpm == 0
+  if not live or not stopped then
+    OMP_AUTO.candidate, OMP_AUTO.since = nil, nil
+    if not live then OMP_AUTO.recheck = true end
+    if not OMP_AUTO.ready then
+      OMP_AUTO.display(widget, false, not live and "CONNECT OMP"
+        or (rpm and "STOP MOTOR" or "CHECK RPM"))
+    end
+    return
+  end
+  local pack, packId = OMP_AUTO.sensor("RxBt", base)
+  local cell, cellId = OMP_AUTO.sensor("Volt", base)
+  local ratio = pack and cell and cell >= 2 and cell <= SAFETY.maxCellSanityV
+                and pack / cell or nil
+  local cells = ratio and math.floor(ratio + 0.5) or nil
+  if not cells or (cells ~= 2 and cells ~= 3) or math.abs(ratio - cells) > 0.15 then
+    OMP_AUTO.candidate, OMP_AUTO.since = nil, nil
+    -- A gap alone cannot erase a confirmed flight. After a reconnect, however,
+    -- require new ground evidence before attributing flights to that name.
+    if not OMP_AUTO.ready or OMP_AUTO.recheck or (pack and cell) then
+      OMP_AUTO.display(widget, false, "CHECK RxBt/Volt")
+    end
+    return
+  end
+  local replaced = packId ~= OMP_AUTO.packId or cellId ~= OMP_AUTO.cellId
+                   or rpmId ~= OMP_AUTO.rpmId
+  if OMP_AUTO.ready and not OMP_AUTO.recheck and not replaced
+     and cells == OMP_AUTO.cells then return end
+  OMP_AUTO.display(widget, false, "CONFIRMING OMP")
+  if cells ~= OMP_AUTO.candidate or replaced or not OMP_AUTO.since
+     or now < OMP_AUTO.since then
+    OMP_AUTO.packId, OMP_AUTO.cellId = packId, cellId
+    OMP_AUTO.rpmId = rpmId
+    OMP_AUTO.candidate, OMP_AUTO.since = nil, nil
+    if OMP_AUTO.uniqueSources() then
+      OMP_AUTO.candidate, OMP_AUTO.since = cells, now
+    else
+      OMP_AUTO.display(widget, false, "CHECK SENSORS")
+    end
+    return
+  end
+  if now - OMP_AUTO.since < OMP_AUTO.confirmTicks then return end
+  if not OMP_AUTO.uniqueSources() then
+    OMP_AUTO.candidate, OMP_AUTO.since = nil, nil
+    OMP_AUTO.display(widget, false, "CHECK SENSORS")
+    return
+  end
+  local changed = cells ~= OMP_AUTO.cells
+  OMP_AUTO.cells = cells
+  OMP_AUTO.name = cells == 2 and "OMP M1" or "OMP M2"
+  OMP_AUTO.recheck, OMP_AUTO.candidate, OMP_AUTO.since = false, nil, nil
+  if changed then
+    resetSessionStats()
+    resetSessionEvidence()
+    timerThresholdArmed = nil
+    widget.layoutSignature = nil
+  end
+  OMP_AUTO.display(widget, true, nil)
+end
+-- END SHARED omp_auto.lua
 local function buildUi()
   if not lvgl then return end
   lvgl.clear()
@@ -5317,6 +5491,7 @@ G.preferNativePicker = true
 local function refreshOwned(widget, event, touchState)
   clearFrameCache()
   batteryProfiles.prepare(widget)
+  OMP_AUTO.sync(widget)
   ensureLayout(widget, event ~= nil)
   local count, status, connected = FC.count, FC.status, widget.profileConnectedForDisplay
   local serviced = serviceTelemetry(true)
@@ -5328,11 +5503,13 @@ end
 local function backgroundOwned(widget)
   clearFrameCache()
   batteryProfiles.prepare(widget)
+  OMP_AUTO.sync(widget)
   serviceTelemetry(true)
   batteryProfiles.service(widget, false, nil, nil)
 end
 local function createOwned(zone, options)
   OPT.autoHeliType = false
+  OMP_AUTO.reset()
   AUTO_HELI.ready, AUTO_HELI.name = false, nil
   -- Drop any stale frame cache (e.g. cached model name) before loading flights.
   clearFrameCache()
@@ -5359,6 +5536,7 @@ local function updateOwned(widget, options)
   widget.options = options
   local previousHeliType = OPT.heliType
   local previousAutoHeliType = OPT.autoHeliType
+  local previousOmpAuto = OPT.ompAuto
   local previousSimulation = OPT.simTelemetry
   local previousFlightCounter = OPT.flightCounter
   local previousReserve = OPT.reservePct
@@ -5367,13 +5545,17 @@ local function updateOwned(widget, options)
   local previousRxValid = OPT.rxPackValid
   local previousMotorSource = SRC.motorSwitch
   applyOptions(options)
+  if previousOmpAuto ~= OPT.ompAuto then
+    OMP_AUTO.reset()
+    timerThresholdArmed = nil
+  end
   if previousAutoHeliType ~= OPT.autoHeliType then
     widget.autoHeliCandidate, widget.autoHeliCandidateTick = nil, nil
     widget.autoHeliNeedsReset = true
     batteryProfiles.reset(widget)
     clearFrameCache()
   end
-  local heliChanged = previousHeliType ~= OPT.heliType
+  local heliChanged = previousHeliType ~= OPT.heliType or previousOmpAuto ~= OPT.ompAuto
   local simulationChanged = previousSimulation ~= OPT.simTelemetry
   local flightCounterChanged = previousFlightCounter ~= OPT.flightCounter
   local reserveChanged = previousReserve ~= OPT.reservePct
@@ -5481,7 +5663,7 @@ local options = {
                              "Titanium Ember", "Aurora", "Desert Night" } },
   { "TxBatt",   CHOICE, 1, { "LiPo", "Li-Ion" } },
   { "MinFlight", VALUE, TOPBAR_MIN_DUR_DEFAULT, -30, 120 },
-  { "HeliType", CHOICE, 1, { "Electric", "Nitro", "OMPHOBBY", "Auto Elec/Nitro" } },
+  { "HeliType", CHOICE, 1, { "Electric", "Nitro", "OMPHOBBY", "Auto Elec/Nitro", "OMP Auto" } },
   { "BattRsv", VALUE, 20, 0, 50 },
   { "BattVoice", BOOL, 0 },
   { "RxPackMin", STRING, "6.60" },

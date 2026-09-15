@@ -91,7 +91,7 @@ local a=t.audit
 local auto=a.AUTO_HELI
 local opts=t.opts
 eq(#t.api.options,10,"ten persisted options")
-eq(table.concat(t.api.options[4][4],","),"Electric,Nitro,OMPHOBBY,Auto Elec/Nitro","choice values")
+eq(table.concat(t.api.options[4][4],","),"Electric,Nitro,OMPHOBBY,Auto Elec/Nitro,OMP Auto","choice values")
 eq(t.api.options[4][3],1,"Electric default")
 for name,expected in pairs({["RAW 700N"]=2,["RAW 700n  "]=2,["RAW nItRo\t"]=2,
   N=2,Nitro=2,Goblin=2,RAWN=2,RAWNitro=2,["RAW 700"]=1,["Nitro 700E"]=1,["OMP M2"]=1,[""]=1}) do
@@ -163,7 +163,7 @@ opts.HeliType=4;t.api.update(t.widget,opts)
 eq(a.OPT.flightCounter,2,"Auto restores saved FC counter")
 eq(auto.ready,false,"re-enabling Auto reconfirms")
 t:settle(true);eq(a.OPT.heliType,2,"Auto after OMP")
-for _,invalid in ipairs({0,5,-1,1.5,3.5,4.5}) do
+for _,invalid in ipairs({0,6,-1,1.5,3.5,4.5,5.5}) do
   opts.HeliType=invalid;t.api.update(t.widget,opts)
   eq(a.OPT.heliType,1,"invalid choice becomes Electric "..tostring(invalid))
   eq(a.OPT.autoHeliType,false,"fraction cannot enable Auto")

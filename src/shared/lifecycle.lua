@@ -1,6 +1,7 @@
 local function refreshOwned(widget, event, touchState)
   clearFrameCache()
   batteryProfiles.prepare(widget)
+  OMP_AUTO.sync(widget)
   ensureLayout(widget, event ~= nil)
   local count, status, connected = FC.count, FC.status, widget.profileConnectedForDisplay
   local serviced = serviceTelemetry(true)
@@ -12,11 +13,13 @@ end
 local function backgroundOwned(widget)
   clearFrameCache()
   batteryProfiles.prepare(widget)
+  OMP_AUTO.sync(widget)
   serviceTelemetry(true)
   batteryProfiles.service(widget, false, nil, nil)
 end
 local function createOwned(zone, options)
   OPT.autoHeliType = false
+  OMP_AUTO.reset()
   AUTO_HELI.ready, AUTO_HELI.name = false, nil
   -- Drop any stale frame cache (e.g. cached model name) before loading flights.
   clearFrameCache()
@@ -43,6 +46,7 @@ local function updateOwned(widget, options)
   widget.options = options
   local previousHeliType = OPT.heliType
   local previousAutoHeliType = OPT.autoHeliType
+  local previousOmpAuto = OPT.ompAuto
   local previousSimulation = OPT.simTelemetry
   local previousFlightCounter = OPT.flightCounter
   local previousReserve = OPT.reservePct
@@ -51,13 +55,17 @@ local function updateOwned(widget, options)
   local previousRxValid = OPT.rxPackValid
   local previousMotorSource = SRC.motorSwitch
   applyOptions(options)
+  if previousOmpAuto ~= OPT.ompAuto then
+    OMP_AUTO.reset()
+    timerThresholdArmed = nil
+  end
   if previousAutoHeliType ~= OPT.autoHeliType then
     widget.autoHeliCandidate, widget.autoHeliCandidateTick = nil, nil
     widget.autoHeliNeedsReset = true
     batteryProfiles.reset(widget)
     clearFrameCache()
   end
-  local heliChanged = previousHeliType ~= OPT.heliType
+  local heliChanged = previousHeliType ~= OPT.heliType or previousOmpAuto ~= OPT.ompAuto
   local simulationChanged = previousSimulation ~= OPT.simTelemetry
   local flightCounterChanged = previousFlightCounter ~= OPT.flightCounter
   local reserveChanged = previousReserve ~= OPT.reservePct

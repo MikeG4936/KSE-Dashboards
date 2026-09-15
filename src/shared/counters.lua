@@ -22,6 +22,7 @@ local function getTimer1Secs()
   return v
 end
 local function getFlightCount()
+  if OPT.ompAuto and not OMP_AUTO.ready then return nil end
   if OPT.flightCounter == FC.ROTORFLIGHT then return FC.count end
   return flightStore.cache and modelFlights or nil
 end
@@ -436,7 +437,8 @@ updateMotorAlertGate = function(now, governorMode, headRpm)
   end
 end
 local function tickFlightCount()
-  if OPT.simTelemetry or (OPT.autoHeliType and not AUTO_HELI.ready) then return end
+  if OPT.simTelemetry or (OPT.autoHeliType and not AUTO_HELI.ready)
+     or (OPT.ompAuto and not OMP_AUTO.ready) then return end
   local thisModel = modelKey(getModelName())
   if flightModel ~= thisModel then
     flightModel = thisModel
@@ -450,6 +452,9 @@ local function tickFlightCount()
     timerThresholdArmed = nil
     resetSessionStats()
     resetSessionEvidence()
+    -- Layout may already have sampled this newly selected aircraft. Its cached
+    -- values must not outlive the validity flags cleared by the session reset.
+    clearFrameCache()
   end
   if OPT.flightCounter ~= FC.RADIO then return end
   local t = getTimer0()

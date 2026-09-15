@@ -12,6 +12,7 @@ local function get(name)
     local cached = RESOLVED[key]
     -- Motor-stop evidence cannot use an id cached before sensor discovery.
     local immediate = name == "ARM" or name == "Gov" or name == "Hspd" or name == "RPM"
+                      or (OPT.ompAuto and name == "RxBt")
     if immediate or not cached or now < cached.tick or now - cached.tick >= 100 then
       local ok, info = pcall(getFieldInfoFn, name)
       cached = cached or {}
@@ -49,7 +50,8 @@ local function getModelName()
   local v = F.modelName
   if v ~= nil then return v end
   local info = getModelInfo()
-  local n = OPT.autoHeliType and AUTO_HELI.name or (info and info.name or nil)
+  local n = OPT.ompAuto and (OMP_AUTO.name or "OMP AUTO")
+            or (OPT.autoHeliType and AUTO_HELI.name or (info and info.name or nil))
   if not n or n == "" then n = "MODEL" end
   v = (string.gsub(n, ",", " "))
   F.modelName = v
@@ -131,7 +133,13 @@ end
 function sensors.getCellCount()
   local v = F.cellCount
   if v ~= nil then return v end
-  if OPT.heliType == HELI_OMPHOBBY then
+  if OPT.ompAuto then
+    v = OMP_AUTO.ready and OMP_AUTO.cells or 0
+    if v == 2 then
+      D.isLiHV = true
+      A.liHvHighSamples = SAFETY.liHvConfirmSamples
+    end
+  elseif OPT.heliType == HELI_OMPHOBBY then
     -- OMP receivers do not stream cell count. Model names containing M2 are
     -- 3S; names containing M1 are 2S LiHV (8.5-8.7 V fully charged). Match
     -- case-insensitively anywhere and make the M1 chemistry deterministic
