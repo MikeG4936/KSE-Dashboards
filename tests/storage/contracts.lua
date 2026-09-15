@@ -7,7 +7,7 @@ local header="model_name,flight_count\n# api_ver=1\n"
 local old=header.."Model A,7\nModel B,20\n"
 local updated=header.."Model A,8\nModel B,20\n"
 local function setup(files)
-  fs.files=files or {}; fs.faults={}; fs.calls={}; fs.online=true
+  fs.files=files or {}; fs.directories={["/"]=true}; fs.faults={}; fs.calls={}; fs.online=true
   local s=Storage.new(path); Storage.load(s); return s
 end
 local function dirty(s)
@@ -25,13 +25,48 @@ eq("retain backup",fs.files[path..".bak"],old)
 eq("never direct overwrite",writesMain(),false)
 eq("save clears dirty",s.dirty,false)
 
-s=setup(); eq("new readable filesystem",s.writable,true)
+s=setup(); eq("native root stat unavailable",fstat("/"),nil)
+eq("new readable filesystem",s.writable,true)
+eq("new filesystem has no error",s.error,nil)
+local directoryOpens=0
+for _,call in ipairs(fs.calls) do
+  if call=="dir:/" then directoryOpens=directoryOpens+1 end
+  eq("first initialization does not enumerate "..call,string.find(call,"^iterate:")==nil,true)
+  eq("first initialization does not create probe file "..call,string.find(call,"^openw:")==nil,true)
+end
+eq("new filesystem checks root once",directoryOpens,1)
 s.cache["Model A"]=1; Storage.markDirty(s,0)
 eq("new history save",Storage.service(s,0),true)
 eq("new history serialized",fs.files[path],header.."Model A,1\n")
 fs.online=false; s=Storage.new(path); Storage.load(s)
 eq("missing SD read only",s.writable,false)
 eq("missing SD visible",s.error,"STORAGE UNAVAILABLE")
+
+for _,fault in ipairs({"nil","throw",true,7,{}}) do
+  setup(); fs.faults["dir:/"]=fault
+  s=Storage.new(path); Storage.load(s)
+  eq("unavailable directory read only "..tostring(fault),s.writable,false)
+  eq("unavailable directory visible "..tostring(fault),s.error,"STORAGE UNAVAILABLE")
+  eq("unavailable directory no cache "..tostring(fault),s.cache,nil)
+end
+setup(); fs.directories={}
+s=Storage.new(path); Storage.load(s)
+eq("missing parent read only",s.writable,false)
+eq("missing parent visible",s.error,"STORAGE UNAVAILABLE")
+local dirApi=dir
+dir=false -- An unavailable/non-callable API must fail closed.
+s=setup(); eq("missing directory API read only",s.writable,false)
+eq("missing directory API visible",s.error,"STORAGE UNAVAILABLE")
+dir=dirApi
+
+for _,suffix in ipairs({"",".bak",".tmp"}) do
+  setup({[path..suffix]=old}); fs.calls={}; fs.faults["dir:/"]="throw"
+  s=Storage.new(path); Storage.load(s)
+  eq("existing history independent of root open "..suffix,s.cache["Model A"],7)
+  for _,call in ipairs(fs.calls) do
+    eq("existing history avoids directory open "..suffix..call,string.find(call,"^dir:")==nil,true)
+  end
+end
 
 for _,fault in ipairs({"nil","short","silent-short","throw"}) do
   s=setup({[path]=old}); dirty(s); fs.faults["write:"..path..".tmp"]=fault
@@ -190,12 +225,13 @@ eq("post-promotion retry no recount",fs.files[path],updated)
 -- Public filesystem names can live behind EdgeTX's ROM-style __index lookup.
 local originalMeta=getmetatable(_G)
 local originalIndex=originalMeta.__index
-local api={fstat=fstat,rename=rename,del=del}
-rawset(_G,"fstat",nil); rawset(_G,"rename",nil); rawset(_G,"del",nil)
+local api={fstat=fstat,rename=rename,del=del,dir=dir}
+rawset(_G,"fstat",nil); rawset(_G,"rename",nil); rawset(_G,"del",nil); rawset(_G,"dir",nil)
 setmetatable(_G,{__index=function(_,key) return api[key] or originalIndex[key] end})
 s=setup({[path]=old}); dirty(s)
 eq("ROM filesystem lookup",Storage.service(s,0),true)
 eq("ROM filesystem saved contents",fs.files[path],updated)
+s=setup(); eq("ROM directory lookup initializes empty history",s.writable,true)
 setmetatable(_G,originalMeta)
-fstat=api.fstat; rename=api.rename; del=api.del
+fstat=api.fstat; rename=api.rename; del=api.del; dir=api.dir
 print("PASS|complete")

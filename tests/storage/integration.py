@@ -7,7 +7,7 @@ import tempfile
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
-CASES = ("qualified", "retry", "recreate", "unreadable", "fc", "fc_pending",
+CASES = ("first_install", "directory_unavailable", "qualified", "retry", "recreate", "unreadable", "fc", "fc_pending",
          "fc_pending_failure", "simulation", "model_change")
 
 

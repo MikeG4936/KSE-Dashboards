@@ -40,6 +40,10 @@ Check current FC identity at callback admission as well as at refresh, including
 
 Acceptance is covered by [Auto lifecycle contracts](../tests/auto_type/README.md), [MSP admission contracts](../tests/msp_admission/README.md) and the existing ownership, rendering, storage and compiler gates. Validate 29/30-tick confirmation, stale callbacks between profile stages, same-name provider replacement, manual/Auto transitions, strict fractional-option rejection, FC-name counts and all three display sizes. Real-radio name timing, memory, UI, SD and RF behavior remain in slice 6.
 
+## OMP automatic identity contract
+
+The separate [OMP automatic identity contract](omp-auto-identification-feasibility.md#omp-auto-implementation-contract) appends Heli Type choice 5 without changing Rotorflight Auto or the ten persisted option slots. It uses only existing CRSF telemetry, supplies `OMP M1`/`OMP M2` names to both renderers and local counting, and keeps effective OMP mode ineligible for KSE MSP. [OMP lifecycle contracts](../tests/omp_auto/README.md) cover this path; its voltage-only identity selection remains locked until an observed disconnect and does not alter the ARM-only MSP admission policy.
+
 ## Flight-count arming-status contract
 
 Both footer renderers consume the shared engine's display status. A live radio link and ready current RF provider are required. `ARMED` or `DISARMED` requires agreement between the current host state and valid, current, fresh ARM bit 0; uncertain or contradictory ARM evidence leaves the neutral `CONNECTED` label. Missing or initializing host state and link/provider loss clear the label. OMP omits RF status. This display calculation does not invoke admission decisions or request MSP data; status changes invalidate retained text even between telemetry samples and across background/foreground transitions.

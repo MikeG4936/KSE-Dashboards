@@ -115,8 +115,14 @@ function Storage.load(state)
   if mainReason == "MISSING" and backupReason == "MISSING"
      and tempReason == "MISSING" then
     local directory = string.match(state.path, "^(.*)/[^/]+$")
-    local root = Storage.stat(directory == "" and "/" or directory or ".")
-    if root then
+    -- FatFS rejects f_stat("/") even on a healthy card. Opening a directory
+    -- works for the root too; the discarded iterator closes through native GC.
+    -- Do not enumerate the card or create a probe file during history loading.
+    local opened, iterator = false, nil
+    if type(_G.dir) == "function" then
+      opened, iterator = pcall(_G.dir, directory == "" and "/" or directory or ".")
+    end
+    if opened and type(iterator) == "function" then
       state.cache, state.source, state.baseText = {}, "new", nil
       state.writable, state.error = true, nil
       return state.cache

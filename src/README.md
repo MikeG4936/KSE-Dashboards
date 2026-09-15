@@ -8,11 +8,14 @@ Keep telemetry, options, alerts, counters, RF scheduling and lifecycle decisions
 
 Auto Elec/Nitro is choice 4 in the existing Heli Type slot. Its confirmed FC name and effective mode belong to the shared engine; renderer fragments only present its status. Synchronize identity before telemetry and before/after embedded RF service. Callback admission independently checks the current published FC name and provider identity, including when an external RF host runs before KSE. Name confirmation does not relax or add a delay to the ARM admission policy.
 
+OMP Auto is choice 5, with effective type OMPHOBBY. `shared/omp_auto.lua` confirms the CRSF pack/average-cell voltage ratio for each connection and supplies the fixed `OMP M1`/`OMP M2` display, image and local-count names. It does not rename the saved EdgeTX model or use the Rotorflight Auto provider. Synchronize before layout and counting; retain confirmed identity through flight and brief telemetry gaps. Follow the [OMP contract and source evidence](../docs/omp-auto-identification-feasibility.md).
+
 Ownership spans both dashboard variants. Preserve monotonically increasing operation tokens when an old widget regains ownership: a captured old callback must never match a new operation. Pending dirty count data lives in the shared ownership registry; cache aliases must follow its current table. Only an expired foreground refresh can replace an existing owner. See [ownership contracts](../tests/ownership/README.md) before changing these boundaries.
 
 Validation entry points:
 
 - [Auto helicopter type](../tests/auto_type/README.md): confirmed FC identity, mode transitions, count identity and retained rendering.
+- [OMP Auto](../tests/omp_auto/README.md): CRSF source qualification, voltage confirmation, connection retention, image/count identity and RF isolation.
 - [Behavior](../tests/behavior/README.md): source identity/freshness, alerts, options and counter parity.
 - [MSP admission](../tests/msp_admission/README.md): pinned RF queue, continuation stages and embedded/external servicing.
 - [Storage](../tests/storage/README.md): recovery, handoff and instruction profiles.

@@ -1,6 +1,6 @@
 -- EdgeTX-like filesystem calls. Failure injection reproduces nil/FRESULT/empty
 -- string semantics rather than desktop Lua file methods.
-fs={files={},calls={},faults={},online=true}
+fs={files={},directories={["/"]=true},calls={},faults={},online=true}
 fs.call=function(kind,path,extra)
   fs.calls[#fs.calls+1]=kind..":"..path..(extra and ":"..extra or "")
   local key=kind..":"..path
@@ -12,9 +12,23 @@ fstat=function(path)
   local fault=fs.call("stat",path)
   if fault=="throw" then error("stat failure") end
   if not fs.online or fault then return nil end
-  if path=="/" then return {size=0,attrib=16} end
+  -- FatFS f_stat rejects the root itself with FR_INVALID_NAME. EdgeTX exposes
+  -- this as nil, even on a healthy mounted card; dir('/') still succeeds.
+  if path=="/" then return nil end
+  if fs.directories[path] then return {size=0,attrib=16} end
   local data=fs.files[path]
   if data~=nil then return {size=#data,attrib=0} end
+end
+dir=function(path)
+  local fault=fs.call("dir",path)
+  if fault=="throw" then error("directory failure") end
+  if not fs.online or fault=="nil" then return nil end
+  if fault then return fault end
+  if not fs.directories[path] then return nil end
+  return function()
+    fs.call("iterate",path)
+    return nil
+  end
 end
 rename=function(from,to)
   local fault=fs.call("rename",from,to)

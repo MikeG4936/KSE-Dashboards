@@ -107,6 +107,9 @@ local AUTO_HELI = {
   option=4, confirmTicks=30, ready=false, name=nil,
   status="WAITING FOR FC NAME",
 }
+-- OMP Auto is independent of Rotorflight's FC-name provider.
+local OMP_AUTO = {option=5, confirmTicks=50, updateWindow=400,
+                  ready=false, status="CONNECT OMP"}
 function AUTO_HELI.infer(name)
   name = type(name) == "string" and string.upper(name):gsub("%s+$", "") or ""
   if name:sub(-1) == "N" or name:sub(-5) == "NITRO" then
@@ -122,6 +125,7 @@ function AUTO_HELI.providerName(provider)
 end
 local OPT = {
   autoHeliType = false,
+  ompAuto      = false,
   heliType     = HELI_ELECTRIC,
   battBarMode   = 0,
   reservePct    = 0,

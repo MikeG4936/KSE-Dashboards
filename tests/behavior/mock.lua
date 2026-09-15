@@ -31,9 +31,12 @@ getRSSI=function() return 0 end
 model={getInfo=function() return {name=__mock.modelName} end,
        getTimer=function() return __mock.timer end}
 fstat=function(path)
-  if path=="/" then return {size=0} end
+  if path=="/" then return nil end -- FatFS rejects root f_stat.
   local data=__mock.files[path]
   if data~=nil then return {size=#data} end
+end
+dir=function(path)
+  if path=="/" then return function() return nil end end
 end
 rename=function(from,to)
   if __mock.files[from]==nil then return 4 end

@@ -18,6 +18,7 @@
 !/docs/KSE4-KSE5-optimization-review.md
 !/docs/rf-adapter-design.md
 !/docs/telemetry-configuration-audit.md
+!/docs/omp-auto-identification-feasibility.md
 
 # Host-side compatibility tooling and fixtures; never copy these to the radio.
 /tools/*
@@ -130,9 +131,16 @@
 !/tests/render/README.md
 
 !/src/shared/auto_heli.lua
+!/src/shared/omp_auto.lua
 
 !/tests/auto_type/
 /tests/auto_type/*
 !/tests/auto_type/*.py
 !/tests/auto_type/*.lua
 !/tests/auto_type/README.md
+
+!/tests/omp_auto/
+/tests/omp_auto/*
+!/tests/omp_auto/*.py
+!/tests/omp_auto/*.lua
+!/tests/omp_auto/README.md

@@ -38,7 +38,25 @@ __runIntegration=function()
     fs.faults={}
   end
   fs.files={[path]=old}
-  if __scenario=="qualified" then
+  if __scenario=="first_install" then
+    fs.files={}; create(); callback(0,0)
+    eq("first install begins at zero",t.count(),0)
+    eq("first install has no file warning",t.A.flightSaveError,false)
+    eq("first install has no probe writes",writes(),0)
+    callback(10,30)
+    eq("first flight counted",t.count(),1)
+    callback(11,30)
+    eq("first flight creates history",fs.files[path],header.."Fixture,1\n")
+    eq("first flight clears pending save",t.state.dirty,false)
+    eq("first flight has no file warning",t.A.flightSaveError,false)
+  elseif __scenario=="directory_unavailable" then
+    fs.files={}; fs.faults["dir:/"]="nil"; create()
+    eq("unavailable directory count unknown",t.count(),nil)
+    eq("unavailable directory file warning",t.A.flightSaveError,true)
+    callback(0,0); callback(10,30); callback(520,30)
+    eq("unavailable directory never writes",writes(),0)
+    eq("unavailable directory never creates history",fs.files[path],nil)
+  elseif __scenario=="qualified" then
     qualify()
     eq("threshold increments count",t.count(),8)
     eq("threshold marks dirty",t.state.dirty,true)
