@@ -215,6 +215,16 @@ Images may be up to **512 KiB (524,288 bytes)**, with no side longer than **512 
 
 When no model image is found, KSE uses `default.png` in its dashboard folder. To use the supplied alternate, back up the original, rename `default1.png` to `default.png`, and reload the widget or restart EdgeTX. Leaving it named `default1.png` does not select it. For dashboard colors, see the [theme gallery](theme-gallery/README.md).
 
+### Optional image resizer
+
+The included image resizer for Windows and Mac trims transparent margins and sizes pictures for your dashboard. It runs entirely on your computer, preserves your originals and needs no installation or internet connection.
+
+1. In the extracted project download, open **`tools/images/KSE Image Resizer.html`** in your browser.
+2. Choose **KSE4**, **KSE5** or **both**, select your transmitter (or its screen resolution if unlisted), then add your pictures.
+3. Download the resized PNGs individually or as a ZIP. Extract the ZIP if used, then copy the pictures to `/IMAGES/` using the [model filenames above](#model-images).
+
+**Restart the radio after replacing pictures** to clear cached image data. See the [resizer guide](tools/images/README.md) for preview, size and shared-image details.
+
 ### Telemetry reference
 
 Match sensor names exactly, including capital letters. Link quality is shown using `RQly`, `RQLY` or `LQ`. The [setup commands](#4-configure-and-discover-telemetry) enable these Rotorflight readings:

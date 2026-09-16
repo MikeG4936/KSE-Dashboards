@@ -1,0 +1,306 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src blob: data:; connect-src 'none'; base-uri 'none'; form-action 'none'">
+<title>KSE Image Resizer</title>
+<style>
+:root { color-scheme:light; font-family:system-ui,-apple-system,"Segoe UI",sans-serif; color:#20342f; background:#f5f6f2; line-height:1.55; }
+* { box-sizing:border-box; }
+body { margin:0; }
+main { max-width:1060px; margin:auto; padding:48px 28px; }
+header { display:flex; gap:24px; align-items:start; justify-content:space-between; margin-bottom:32px; }
+h1 { font-size:clamp(30px,5vw,42px); line-height:1.12; letter-spacing:-1.5px; margin:6px 0 14px; }
+h2 { font-size:20px; margin:0; }
+p { margin:8px 0; }
+.eyebrow { text-transform:uppercase; letter-spacing:2px; font-size:12px; font-weight:750; color:#537369; }
+.intro { max-width:640px; color:#53635e; font-size:17px; }
+.offline { white-space:nowrap; background:#e3efe7; color:#2b5c46; padding:8px 12px; border-radius:24px; font-size:13px; }
+.offline::before { content:"●"; margin-right:7px; }
+.panel { background:white; border:1px solid #d8dfd8; border-radius:16px; padding:24px; }
+.settings { display:flex; flex-wrap:wrap; align-items:end; gap:18px; margin-bottom:22px; }
+.radio-choice { flex:1 1 370px; min-width:0; }
+.radio-choice select { width:100%; }
+label { display:block; font-weight:650; font-size:14px; margin-bottom:6px; }
+select { font:inherit; border:1px solid #aebdb5; background:white; color:inherit; border-radius:8px; min-height:46px; padding:8px 36px 8px 12px; }
+.size { font-size:14px; color:#53635e; align-self:center; margin:24px 0 0 auto; }
+.drop { border:2px dashed #b7c9be; border-radius:12px; padding:32px 20px; background:#f7faf6; text-align:center; }
+.drop.drag { background:#e2f0e6; border-color:#18624c; }
+.drop strong { display:block; font-size:19px; margin-bottom:4px; }
+.small { font-size:13px; color:#58665f; }
+.image-source { margin-top:14px; }
+.image-source a { color:#17624c; text-underline-offset:3px; }
+button, .download { display:inline-flex; align-items:center; justify-content:center; min-height:44px; padding:10px 17px; font:inherit; font-size:14px; font-weight:650; border:1px solid #17624c; border-radius:8px; background:#17624c; color:white; cursor:pointer; text-decoration:none; }
+button:hover, .download:hover { background:#104f3d; }
+button:disabled { cursor:default; opacity:.45; }
+button.secondary { background:white; border-color:#b9c6be; color:#254d3d; }
+:focus-visible { outline:3px solid #ad6a1a; outline-offset:3px; }
+.picker { margin:14px 0 5px; }
+input[type=file] { display:none; }
+#status { min-height:26px; margin:18px 0 0; }
+.result-bar { display:flex; flex-wrap:wrap; gap:12px; align-items:center; justify-content:space-between; margin:30px 0 16px; }
+.actions { display:flex; gap:10px; flex-wrap:wrap; }
+#results { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:18px; }
+.card { min-width:0; border:1px solid #d8dfd8; border-radius:12px; overflow:hidden; background:white; }
+.preview { background:#143348; min-height:195px; padding:18px 12px; display:flex; align-items:center; justify-content:center; }
+.preview img { max-width:100%; height:auto; display:block; }
+.card-body { padding:16px; }
+.card h3 { margin:0 0 4px; font-size:16px; overflow-wrap:anywhere; }
+.card .download { margin-top:12px; background:white; color:#17624c; }
+.card .download:hover { background:#edf5ef; }
+.error { border-color:#d8b5a5; }
+.error p { color:#8b3b27; overflow-wrap:anywhere; }
+.next { border-left:3px solid #77a38d; padding:0 0 0 18px; margin-top:30px; }
+.next p { color:#4d6056; }
+details { margin-top:28px; font-size:14px; color:#53635e; }
+summary { cursor:pointer; color:#254d3d; font-weight:650; }
+details p { max-width:780px; }
+footer { font-size:12px; color:#617168; margin-top:30px; }
+[hidden] { display:none !important; }
+@media(max-width:650px) { main{padding:28px 16px;} header{display:block;} .offline{display:inline-block;margin-top:12px;} .panel{padding:18px;} .settings>div{flex:1;} select{width:100%;} .size{margin:0;flex-basis:100%;} #results{grid-template-columns:1fr;} .drop{padding:24px 12px;} .actions{width:100%;} .actions button{flex:1;} }
+@media(max-width:650px) { .settings>.radio-choice{flex:1 1 100%;} .radio-choice select{font-size:14px;} }
+</style>
+</head>
+<body>
+<main>
+<header>
+  <div><div class="eyebrow">KSE dashboard tools</div><h1>Give your heli room to shine.</h1><p class="intro">Prepare model pictures for KSE4 or KSE5. Trim empty edges, keep the proportions, and fill the available picture box.</p></div>
+  <span class="offline">Works offline · no uploads</span>
+</header>
+<section class="panel" aria-label="Prepare pictures">
+  <div class="settings">
+    <div><label for="dashboard">Dashboard</label><select id="dashboard"><option>KSE5</option><option>KSE4</option><option value="both">Both KSE4 &amp; KSE5</option></select></div>
+    <div class="radio-choice"><label for="screen">Transmitter / screen size</label><select id="screen">
+      <optgroup label="RadioMaster">
+        <option value="800x480">TX16S MK3 / MAX — 800 × 480</option>
+        <option value="480x320">TX15 / MAX — 480 × 320</option>
+        <option value="480x320">GX15 / MAX — 480 × 320</option>
+        <option value="480x272">TX16S / MKII / MAX — 480 × 272</option>
+      </optgroup>
+      <optgroup label="Jumper">
+        <option value="480x320">T15 / T15 Pro — 480 × 320</option>
+        <option value="480x272">T16 / T18 — 480 × 272</option>
+      </optgroup>
+      <optgroup label="Screen resolution only">
+        <option value="800x480">800 × 480</option>
+        <option value="480x320">480 × 320</option>
+        <option value="480x272">480 × 272</option>
+      </optgroup>
+    </select></div>
+    <p id="size" class="size"></p>
+  </div>
+  <div id="drop" class="drop">
+    <strong>Drop your pictures here</strong>
+    <div class="small">PNG or BMP · select up to 30 pictures</div>
+    <button id="choose" class="picker" type="button">Choose pictures</button>
+    <input id="files" type="file" accept=".png,.bmp,image/png,image/bmp" multiple aria-label="Choose pictures">
+    <div class="small">Your originals stay untouched.</div>
+  </div>
+  <p class="small image-source">Need a picture? Browse model images at <a href="https://www.skyraccoon.com/" target="_blank" rel="noopener noreferrer" title="Open SkyRaccoon in a new tab">SkyRaccoon</a> (internet required), then download a PNG and add it here.</p>
+  <p id="status" role="status" aria-live="polite">Choose your dashboard and transmitter or screen size, then add pictures.</p>
+</section>
+<section id="output" hidden aria-label="Prepared pictures">
+  <div class="result-bar"><h2 id="result-title">Your pictures</h2><div class="actions"><button id="clear" class="secondary" type="button">Clear pictures</button><button id="zip" type="button" disabled>Download all (ZIP)</button></div></div>
+  <div id="results"></div>
+</section>
+<section class="next">
+  <h2>Then, onto your radio</h2>
+  <p>Copy the downloaded PNGs to the SD card’s <strong>IMAGES</strong> folder. Each filename must match the name shown by KSE — for example, <strong>TREX 700N.png</strong>. For OMP Auto, use <strong>OMP M1.png</strong> and <strong>OMP M2.png</strong>.</p>
+  <p><strong>Restart the radio after replacing pictures.</strong> This clears its stored image data.</p>
+</section>
+<details><summary>A few helpful details</summary>
+  <p>These sizes fit the current full-screen KSE layouts, with a small two-pixel margin. Smaller widget areas may still scale the picture. Previews have a dark background so transparent edges are visible; that background is not added to your files.</p>
+  <p>“Both” creates separate KSE4 and KSE5 folders in the ZIP. If you use both dashboards with the same picture on one SD card, copy the KSE5 version; KSE4 can scale it down.</p>
+  <p>Only transparent margins are trimmed. Painted backgrounds stay, and enlarging a small picture cannot restore missing detail. Pictures are resized with a high-quality filter and saved as transparent PNGs. BMP files become PNGs.</p>
+  <p>Choose pictures again to replace the current batch. Duplicate filenames get a number at the end; rename those before copying to the radio. Files over 20 MB or 16 million pixels are skipped. Keep this HTML file on your computer and open it in a current version of Edge, Chrome, Firefox or Safari whenever you need it. Nothing to install.</p>
+</details>
+<footer>KSE Image Resizer · All image processing happens in your browser on this computer.</footer>
+</main>
+<script>
+'use strict';
+// Presets measured from KSE4/KSE5 full-screen constructors; keep in sync with resize_kse_images.py.
+const SIZES = {
+  KSE4: {'800x480':[272,144], '480x320':[164,97], '480x272':[164,82]},
+  KSE5: {'800x480':[377,156], '480x320':[225,104], '480x272':[228,98]}
+};
+const $ = id => document.getElementById(id);
+let selected = [], outputs = [], urls = [], busy = false;
+const tick = () => new Promise(resolve => setTimeout(resolve, 0));
+function updateSize() {
+  $('size').textContent = variants().map(v => `${v}: ${SIZES[v][$('screen').value].join(' × ')} px`).join(' · ');
+}
+function variants() { return $('dashboard').value === 'both' ? ['KSE4','KSE5'] : [$('dashboard').value]; }
+function setBusy(value) {
+  busy = value;
+  for (const id of ['dashboard','screen','choose','clear','files']) $(id).disabled = value;
+  $('zip').disabled = value || !outputs.length;
+  $('results').setAttribute('aria-busy', String(value));
+}
+function releaseResults() {
+  urls.forEach(url => URL.revokeObjectURL(url)); urls = []; outputs = [];
+  $('results').replaceChildren(); $('zip').disabled = true;
+}
+function safeName(name, used) {
+  let stem = name.replace(/\.[^.]*$/, '').replace(/[<>:"/\\|?*\u0000-\u001f]/g, '_').trim().replace(/[ .]+$/g, '').slice(0,100).trim().replace(/[ .]+$/g, '') || 'picture';
+  if (/^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i.test(stem)) stem = '_' + stem;
+  let nameOut = stem + '.png', n = 2;
+  while (used.has(nameOut.toLowerCase())) nameOut = `${stem} (${n++}).png`;
+  used.add(nameOut.toLowerCase()); return nameOut;
+}
+async function decode(file) {
+  if (!/\.(png|bmp)$/i.test(file.name)) throw Error('Choose a PNG or BMP picture.');
+  if (file.size > 20 * 1024 * 1024) throw Error('This picture is over 20 MB. Use a smaller source.');
+  const header = new DataView(await file.slice(0,54).arrayBuffer());
+  let w = 0, h = 0;
+  if (header.byteLength >= 24 && header.getUint32(0) === 0x89504e47 && header.getUint32(4) === 0x0d0a1a0a && header.getUint32(12) === 0x49484452) {
+    w = header.getUint32(16); h = header.getUint32(20);
+  } else if (header.byteLength >= 26 && header.getUint16(0) === 0x424d) {
+    if (header.getUint32(14,true) === 12) { w = header.getUint16(18,true); h = header.getUint16(20,true); }
+    else { w = header.getInt32(18,true); h = Math.abs(header.getInt32(22,true)); }
+  } else throw Error('This file is not a readable PNG or BMP picture.');
+  if (w < 1 || h < 1 || w > 16384 || h > 16384 || w*h > 16000000) throw Error('This picture is too large or has invalid dimensions. Use a source under 16 million pixels.');
+  const url = URL.createObjectURL(file);
+  try {
+    const img = new Image(); img.src = url;
+    await new Promise((resolve,reject) => { img.onload = resolve; img.onerror = () => reject(Error('The browser could not read this picture. Try saving it as a PNG.')); });
+    if (img.naturalWidth !== w || img.naturalHeight !== h) throw Error('The picture dimensions do not match its file header.');
+    const canvas = document.createElement('canvas'); canvas.width = w; canvas.height = h;
+    const ctx = canvas.getContext('2d', {willReadFrequently:true}); ctx.drawImage(img,0,0);
+    const data = ctx.getImageData(0,0,w,h);
+    canvas.width = canvas.height = 1;
+    let left=w, top=h, right=-1, bottom=-1;
+    for (let y=0; y<h; y++) for (let x=0; x<w; x++) if (data.data[(y*w+x)*4+3]) {
+      if (x<left) left=x; if (x>right) right=x; if (y<top) top=y; if (y>bottom) bottom=y;
+    }
+    if (right < left) throw Error('This picture is completely transparent.');
+    return {data:data.data, stride:w, left, top, width:right-left+1, height:bottom-top+1};
+  } finally { URL.revokeObjectURL(url); }
+}
+// Separable Lanczos-3 filtering, with premultiplied alpha to avoid dark outlines.
+function weights(src, dst) {
+  const scale = Math.max(1, src/dst), support = 3*scale, out=[];
+  const sinc = x => Math.abs(x)<1e-8 ? 1 : Math.sin(Math.PI*x)/(Math.PI*x);
+  for (let i=0; i<dst; i++) {
+    const center = (i+.5)*src/dst-.5;
+    const start = Math.max(0,Math.ceil(center-support)), end = Math.min(src-1,Math.floor(center+support));
+    const ws = new Float64Array(end-start+1); let total=0;
+    for(let j=start; j<=end; j++) { const d=(j-center)/scale; const v=Math.abs(d)<3 ? sinc(d)*sinc(d/3) : 0; ws[j-start]=v; total+=v; }
+    for(let j=0; j<ws.length; j++) ws[j]/=total;
+    out.push({start, values:ws});
+  }
+  return out;
+}
+async function resize(src, box) {
+  const [bw,bh]=box, ratio=Math.min((bw-4)/src.width,(bh-4)/src.height);
+  const w=Math.max(1,Math.round(src.width*ratio)), h=Math.max(1,Math.round(src.height*ratio));
+  const xweights=weights(src.width,w), yweights=weights(src.height,h);
+  const temp=new Float32Array(w*src.height*4);
+  for(let y=0; y<src.height; y++) {
+    for(let x=0; x<w; x++) {
+      const {start,values}=xweights[x], to=(y*w+x)*4;
+      for(let k=0; k<values.length; k++) {
+        const from=((y+src.top)*src.stride+src.left+start+k)*4, a=src.data[from+3]/255, f=values[k];
+        for(let c=0;c<3;c++) temp[to+c]+=src.data[from+c]*a*f;
+        temp[to+3]+=src.data[from+3]*f;
+      }
+    }
+    if (y%64===0) await tick();
+  }
+  const canvas=document.createElement('canvas'); canvas.width=bw; canvas.height=bh;
+  const ctx=canvas.getContext('2d'), result=ctx.createImageData(bw,bh);
+  const ox=Math.floor((bw-w)/2), oy=Math.floor((bh-h)/2);
+  for(let y=0;y<h;y++) for(let x=0;x<w;x++) {
+    const {start,values}=yweights[y], rgba=[0,0,0,0];
+    for(let k=0;k<values.length;k++) for(let c=0;c<4;c++) rgba[c]+=temp[((start+k)*w+x)*4+c]*values[k];
+    const to=((y+oy)*bw+x+ox)*4, alpha=Math.max(0,Math.min(255,rgba[3]));
+    result.data[to+3]=alpha;
+    if(alpha>0) for(let c=0;c<3;c++) result.data[to+c]=Math.max(0,Math.min(alpha,rgba[c]))*255/alpha;
+  }
+  ctx.putImageData(result,0,0);
+  const blob=await new Promise(resolve => canvas.toBlob(resolve,'image/png'));
+  canvas.width=canvas.height=1;
+  if(!blob || blob.size>524288) throw Error('The browser could not create a picture within KSE’s file limit.');
+  return blob;
+}
+function el(tag, className, text) { const node=document.createElement(tag); if(className) node.className=className; if(text!==undefined) node.textContent=text; return node; }
+function addCard(name, variant, box, blob) {
+  const url=URL.createObjectURL(blob); urls.push(url);
+  const card=el('article','card'), preview=el('div','preview'), img=el('img');
+  img.src=url; img.alt=`Prepared ${name} for ${variant}`; img.width=box[0]; img.height=box[1]; preview.append(img);
+  const body=el('div','card-body'); body.append(el('h3','',name),el('div','small',`${variant} · ${box.join(' × ')} px · ${Math.ceil(blob.size/1024)} KB`));
+  const link=el('a','download','Download PNG'); link.href=url; link.download=name; link.setAttribute('aria-label',`Download ${name} for ${variant}`); body.append(link);
+  card.append(preview,body); $('results').append(card);
+}
+function addError(name, message) { const card=el('article','card error'), body=el('div','card-body'); body.append(el('h3','',name),el('p','',message)); card.append(body); $('results').append(card); }
+async function processFiles() {
+  if(busy) return;
+  releaseResults(); updateSize();
+  $('output').hidden=!selected.length;
+  if(!selected.length) return;
+  setBusy(true); let failed=0; const used=new Set();
+  try {
+    for(let i=0;i<selected.length;i++) {
+      const file=selected[i]; $('status').textContent=`Preparing picture ${i+1} of ${selected.length}…`; await tick();
+      try {
+        const source=await decode(file), name=safeName(file.name,used);
+        for(const variant of variants()) {
+          const box=SIZES[variant][$('screen').value], blob=await resize(source,box);
+          outputs.push({name:($('dashboard').value==='both' ? variant+'/' : '')+name, blob}); addCard(name,variant,box,blob);
+        }
+      } catch(error) { failed++; addError(file.name,error.message || 'This picture could not be prepared.'); }
+    }
+    $('result-title').textContent=`${outputs.length} picture${outputs.length===1?'':'s'} ready`;
+    $('status').textContent=outputs.length ? `Ready to download. Your originals have not been changed.${failed ? ` ${failed} source file(s) could not be prepared; see below.` : ''}` : 'No pictures were prepared. See the messages below.';
+  } finally { setBusy(false); }
+}
+function chooseFiles(files) {
+  if(busy) return;
+  if(files.length>30) { $('status').textContent='Please choose up to 30 pictures at a time. Your current batch has been kept.'; return; }
+  if(!files.length) return;
+  selected=Array.from(files); processFiles();
+}
+// ZIP "store" records: PNG data is already compressed. UTF-8 names, CRC-32, no external library.
+const crcTable=Uint32Array.from({length:256},(_,n)=>{ for(let k=0;k<8;k++) n=(n&1)?0xedb88320^(n>>>1):n>>>1; return n>>>0; });
+function crc32(bytes) { let crc=0xffffffff; for(const byte of bytes) crc=crcTable[(crc^byte)&255]^(crc>>>8); return (crc^0xffffffff)>>>0; }
+async function makeZip(entries) {
+  const parts=[], central=[]; let offset=0, centralSize=0;
+  const encoder=new TextEncoder();
+  for(const entry of entries) {
+    const bytes=new Uint8Array(await entry.blob.arrayBuffer()), name=encoder.encode(entry.name), crc=crc32(bytes);
+    const local=new Uint8Array(30+name.length), l=new DataView(local.buffer);
+    l.setUint32(0,0x04034b50,true); l.setUint16(4,20,true); l.setUint16(6,0x800,true); l.setUint16(12,33,true);
+    l.setUint32(14,crc,true); l.setUint32(18,bytes.length,true); l.setUint32(22,bytes.length,true); l.setUint16(26,name.length,true); local.set(name,30);
+    const record=new Uint8Array(46+name.length), c=new DataView(record.buffer);
+    c.setUint32(0,0x02014b50,true); c.setUint16(4,20,true); c.setUint16(6,20,true); c.setUint16(8,0x800,true); c.setUint16(14,33,true);
+    c.setUint32(16,crc,true); c.setUint32(20,bytes.length,true); c.setUint32(24,bytes.length,true); c.setUint16(28,name.length,true); c.setUint32(42,offset,true); record.set(name,46);
+    parts.push(local,bytes); central.push(record); offset+=local.length+bytes.length; centralSize+=record.length;
+  }
+  const end=new Uint8Array(22), e=new DataView(end.buffer);
+  e.setUint32(0,0x06054b50,true); e.setUint16(8,entries.length,true); e.setUint16(10,entries.length,true); e.setUint32(12,centralSize,true); e.setUint32(16,offset,true);
+  return new Blob([...parts,...central,end],{type:'application/zip'});
+}
+$('choose').addEventListener('click',()=>$('files').click());
+$('files').addEventListener('change',event=>{ chooseFiles(event.target.files); event.target.value=''; });
+for(const id of ['dashboard','screen']) $(id).addEventListener('change',()=>{ updateSize(); processFiles(); });
+$('clear').addEventListener('click',()=>{ selected=[]; releaseResults(); $('output').hidden=true; $('status').textContent='Pictures cleared. Choose more whenever you’re ready.'; });
+for(const name of ['dragenter','dragover']) $('drop').addEventListener(name,event=>{ event.preventDefault(); if(!busy) $('drop').classList.add('drag'); });
+$('drop').addEventListener('dragleave',()=>$('drop').classList.remove('drag'));
+$('drop').addEventListener('drop',event=>{ event.preventDefault(); $('drop').classList.remove('drag'); chooseFiles(event.dataTransfer.files); });
+// Prevent an accidental drop outside the target from navigating away from the tool.
+window.addEventListener('dragover',event=>event.preventDefault()); window.addEventListener('drop',event=>event.preventDefault());
+$('zip').addEventListener('click',async()=>{
+  if(busy || !outputs.length) return;
+  setBusy(true); $('status').textContent='Preparing your ZIP download…';
+  try {
+    const blob=await makeZip(outputs), url=URL.createObjectURL(blob), link=el('a');
+    link.href=url; link.download=`KSE-images-${$('dashboard').value}-${$('screen').value}.zip`; document.body.append(link); link.click(); link.remove();
+    setTimeout(()=>URL.revokeObjectURL(url),60000);
+    $('status').textContent='Download requested. Find the ZIP in your browser’s downloads, extract it, then copy the PNGs to your radio.';
+  } catch(error) { $('status').textContent='The ZIP could not be created. Use the individual Download PNG buttons instead.'; }
+  finally { setBusy(false); }
+});
+updateSize();
+</script>
+</body>
+</html>
