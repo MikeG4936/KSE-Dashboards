@@ -12,7 +12,7 @@ end
 lvgl={clear=function() objects={} end,label=object,rectangle=object,
       image=object,hline=object,vline=object,arc=object}
 local api=dofile(dashboardPath)
-assert(#api.options==10)
+assert(#api.options==11)
 local opts={Theme=1,HeliType=1,CountSrc=1,BattRsv=20,MotorSw=99,RxPackMin="6.60",RxPackMax="8.40"}
 for name,value in pairs({Hspd=2200,Tspd=9000,Gov=4,Vbat=45.6,Vcel=3.8,["Cel#"]=12,
   Curr=30,Capa=1200,["Bat%"]=65,Tesc=75,Vbec=7.4,RQly=100,["PID#"]=1,["RTE#"]=2,

@@ -150,8 +150,9 @@ function Storage.serialize(values)
   if #keys > Storage.maxEntries then return nil, "TOO MANY MODELS" end
   table.sort(keys)
   local parts = {"model_name,flight_count\n# api_ver=1\n"}
+  local format = string.format
   for _, key in ipairs(keys) do
-    parts[#parts+1] = string.format("%s,%d\n", key, values[key])
+    parts[#parts+1] = format("%s,%d\n", key, values[key])
   end
   local text = table.concat(parts)
   if #text > Storage.maxBytes then return nil, "HISTORY TOO LARGE" end

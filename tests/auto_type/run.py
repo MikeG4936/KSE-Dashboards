@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 import subprocess
 import tempfile
+import wave
 
 ROOT = Path(__file__).resolve().parents[2]
 HERE = Path(__file__).resolve().parent
@@ -25,6 +26,12 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--runner', type=Path, required=True)
     args = parser.parse_args()
+    clips = [ROOT / variant / 'BatterySounds/fuel.wav' for variant in ('KSE4', 'KSE5')]
+    assert clips[0].read_bytes() == clips[1].read_bytes(), 'Fuel voice clips differ'
+    with wave.open(str(clips[0])) as clip:
+        assert (clip.getnchannels(), clip.getsampwidth(), clip.getframerate()) == (1, 2, 32000)
+        assert 0 < clip.getnframes() <= 2 * clip.getframerate(), 'Expected a short fuel reminder'
+        assert any(clip.readframes(clip.getnframes())), 'Fuel clip is silent'
     with tempfile.TemporaryDirectory(prefix='kse-auto-') as temp:
         temp = Path(temp)
         for variant in ('KSE4', 'KSE5'):

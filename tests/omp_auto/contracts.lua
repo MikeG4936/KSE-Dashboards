@@ -184,7 +184,7 @@ eq(locked.audit.A.flightDeadVoiceLatched,false,"new class resets old warning lat
 
 local t=fixture()
 local a=t.audit
-eq(#t.api.options,10,"ten persisted options")
+eq(#t.api.options,11,"original ten options plus fuel setting")
 eq(table.concat(t.api.options[4][4],","),"Electric,Nitro,OMPHOBBY,Auto Elec/Nitro,OMP Auto","appended choice order")
 eq(t.api.options[4][3],1,"Electric default retained")
 eq(a.OPT.ompAuto,true,"OMP Auto enabled")

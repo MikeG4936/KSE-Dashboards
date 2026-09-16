@@ -131,6 +131,32 @@ local function timerElapsedSeconds(timer)
   if elapsed < 0 then elapsed = 0 end
   return elapsed
 end
+function BATTERY_VOICE.checkFuel()
+  local threshold = OPT.fuelCheckSeconds
+  if threshold == 0 then return end
+  local secs = timerElapsedSeconds(getTimer0())
+  if secs == nil then return end
+  -- An already-expired timer on widget creation is not a new flight. Only an
+  -- observed reset/below-threshold value rearms this timer-owned latch; RF
+  -- reconnects, type changes and battery-alert resets must not rearm it.
+  if secs < threshold then
+    A.fuelCheckArmed = true
+  elseif A.fuelCheckArmed then
+    if OPT.autoHeliType and not AUTO_HELI.ready then return end
+    if OPT.heliType == HELI_NITRO then
+      if not A.linkAvailable then return end
+      A.fuelCheckArmed = false
+      if not BATTERY_VOICE.play(BATTERY_VOICE.path .. "fuel.wav") and playTone then
+        pcall(playTone, 1500, 200, 100, 0)
+        pcall(playTone, 2000, 200, 0, 0)
+      end
+      -- Queue a reminder without replacing more urgent battery feedback.
+      if playHaptic then pcall(playHaptic, 15, 0, 0) end
+    else
+      A.fuelCheckArmed = false
+    end
+  end
+end
 local function shiftFlightBatteryAlertTimers(delta)
   if not delta or delta <= 0 then return end
   if (A.battAlertNextTick or 0) > 0 then
@@ -510,6 +536,7 @@ local function serviceTelemetry(trackStats)
   end
   if not OPT.simTelemetry then tickFlightCount() end
   tick(now)
+  if not OPT.simTelemetry then BATTERY_VOICE.checkFuel() end
   if trackStats then updateStats() end
   return true
 end

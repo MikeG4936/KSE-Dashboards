@@ -10,7 +10,7 @@ The runner instruments temporary copies of both complete dashboards with a test-
 
 The fixture extends the shared behavior/storage mocks with native telemetry slot metadata: `telem1` source IDs advance by three per slot, valid empty slots return tables, raw and calculated sensors remain distinct, and source values report current/fresh flags. Contracts cover:
 
-- Appended option order, ten saved slots, local counter override without rewriting its saved preference, and manual OMP fallback.
+- Appended option order, preserved original ten slots and additional fuel setting, local counter override without rewriting its saved preference, and manual OMP fallback.
 - Exact 49/50-tick confirmation, full LiHV packs with CRSF rounding, partly charged 3S packs, ratio tolerance, invalid ratios and values, independent native freshness pulses, the 399/400/401-tick observation boundary, stale or noncurrent samples, candidate interruption, and backwards time.
 - Raw CRSF voltage metadata validation, calculated-name collisions, ambiguous raw sources, valid empty slots, source removal, and rediscovery. Missing, stale, calculated, duplicate or running RPM does not gate voltage identification; no ARM sensor is required.
 - Locked identity during a live connection despite voltage/RPM/source/timing changes; observed disconnect and fresh reconnect acquisition, warning/extrema/chemistry resets, timer qualification, theme edits, saved model changes, and explicit mode changes.

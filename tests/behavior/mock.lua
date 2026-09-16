@@ -8,6 +8,7 @@ __mock = {now=0, values={}, files={}, events={}, timer={value=0,start=0}, modelN
 LCD_W=800; LCD_H=480
 lcd={RGB=function(r,g,b) return r*65536+g*256+b end}
 getTime=function() return __mock.now end
+getVersion=function() return "2.12.4", "tx16s", 2, 12, 4, "EdgeTX" end
 getFieldInfo=function(name)
   __mock.fieldCalls[name]=(__mock.fieldCalls[name] or 0)+1
   if name == "SG" or name == 99 then return {id=99,name="SG",desc="Switch G"} end

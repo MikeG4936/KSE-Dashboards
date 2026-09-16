@@ -130,6 +130,7 @@ local OPT = {
   battBarMode   = 0,
   reservePct    = 0,
   battVoice     = false,
+  fuelCheckSeconds = 360,
   simTelemetry  = false,
   flightCounter = 2, -- FC.ROTORFLIGHT; FC is declared immediately below.
   rxPackMin     = 6.6,

@@ -955,6 +955,7 @@ local options = {
     end)() },
   { "CountSrc", CHOICE, 2, { "KSE Counter", "Rotorflight FC" } },
 }
+G.addFuelOption(options)
 local OPTION_LABELS = {
   TxBatt   = "TX Battery",
   MinFlight= "KSE Counter Min (sec)",
@@ -965,6 +966,7 @@ local OPTION_LABELS = {
   RxPackMax= "Rx Pack Maximum",
   MotorSw  = "Motor Switch",
   CountSrc = "Flight Counter",
+  FuelCheck= "Fuel Check Timer",
 }
 local function translate(name, language)
   return OPTION_LABELS[name] or name

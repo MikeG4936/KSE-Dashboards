@@ -54,8 +54,10 @@ Use review subagents for substantive RF/safety changes and shared-engine extract
 
 ## OMP Auto extension
 
-For the OMP Auto extension, use the [OMP identity contract](omp-auto-identification-feasibility.md#omp-auto-implementation-contract) and [OMP lifecycle fixtures](../tests/omp_auto/README.md) alongside slices 5–6. Preserve manual modes and Rotorflight Auto, validate identity before counting/layout, and retain the standalone-folder and ten-option contracts. Require existing behavior/Auto/MSP/ownership/render checks, both EdgeTX compiler/resource comparisons, independent compatibility review, and separate transmitter validation of both helicopters and reconnects.
+For the OMP Auto extension, use the [OMP identity contract](omp-auto-identification-feasibility.md#omp-auto-implementation-contract) and [OMP lifecycle fixtures](../tests/omp_auto/README.md) alongside slices 5–6. Preserve manual modes and Rotorflight Auto, validate identity before counting/layout, and retain the standalone-folder and original-option preservation contracts. Require existing behavior/Auto/MSP/ownership/render checks, both EdgeTX compiler/resource comparisons, independent compatibility review, and separate transmitter validation of both helicopters and reconnects.
 
 ## Slice handoff
+
+The Nitro fuel reminder extension follows the [fuel reminder contract](KSE4-KSE5-optimization-review.md#nitro-fuel-reminder-contract) and [Auto lifecycle fixtures](../tests/auto_type/README.md). Preserve Timer 1 configuration and the original ten saved settings; append the fuel setting only on firmware with verified capacity; require existing behavior/MSP/ownership/storage/render and compiler/resource gates, independent compatibility review, and separate transmitter audio/haptic checks.
 
 For each slice, record the concrete behavior change, affected findings, commit, reproducible checks and results, resource deltas, review findings resolved, and any outstanding hardware checks. Keep this in the task/PR handoff rather than appending a running journal to project instructions. Update the README for shipped behavior and maintain the review as dated evidence rather than presenting its original measurements as current forever.
