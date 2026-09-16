@@ -54,7 +54,7 @@
     for i,c in ipairs(__mock.children) do
       local parts={"STYLE",tostring(i)}
       for _,key in ipairs({"type","x","y","w","h","font","cornerRadius","color","textColor","align","text"}) do
-        parts[#parts+1]=tostring(resolve(c[key])):gsub("\n","\\n")
+        parts[#parts+1]=string.gsub(tostring(resolve(c[key])),"\n","\\n")
       end
       print(table.concat(parts,"|"))
     end
@@ -67,7 +67,7 @@
     assert(api.show(wgt)==true and __mock.dialogs==1 and __mock.menus==0)
     assert(#__mock.children==9,"six profiles plus status/retry/close")
     bounds(width,height)
-    assert(__mock.children[1].text:find("ACTIVE") and __mock.children[2].text:find("2000 mAh"))
+    assert(string.find(__mock.children[1].text,"ACTIVE") and string.find(__mock.children[2].text,"2000 mAh"))
     assert(__mock.children[1].active()==false and __mock.children[2].active()==true)
     assert(api.show(wgt)==true and __mock.dialogs==1,"duplicate dialog")
     __mock.children[2].press()

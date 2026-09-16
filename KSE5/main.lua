@@ -480,8 +480,8 @@ local AUTO_HELI = {
 -- OMP Auto is independent of Rotorflight's FC-name provider.
 local OMP_AUTO = {option=5, confirmTicks=50, ready=false, status="CONNECT OMP"}
 function AUTO_HELI.infer(name)
-  name = type(name) == "string" and string.upper(name):gsub("%s+$", "") or ""
-  if name:sub(-1) == "N" or name:sub(-5) == "NITRO" then
+  name = type(name) == "string" and string.gsub(string.upper(name), "%s+$", "") or ""
+  if string.sub(name, -1) == "N" or string.sub(name, -5) == "NITRO" then
     return HELI_NITRO
   end
   return HELI_ELECTRIC
@@ -5037,7 +5037,7 @@ end
 -- Admission and continuations are KSE work. An already active RF Tool
 -- transaction is intentionally left alone, including its upstream retries.
 local function profileServiceMspAdmission(wgt, now)
-  local allowed = MspAdmission.disarmed(wgt)
+  local allowed, reason = MspAdmission.disarmed(wgt)
   local operation = wgt.profileOperation
   if operation and (not allowed or not MspAdmission.valid(wgt, operation)) then
     local kind, target = operation.kind, operation.target
@@ -5046,7 +5046,7 @@ local function profileServiceMspAdmission(wgt, now)
       profileFailFlightStats(wgt, operation.token, "WAITING FOR DISARM")
       FC.wanted = true
     else
-      profileOperationFailed(wgt, "REQUEST PAUSED - CHECK PROFILE AFTER DISARM", operation.token)
+      profileOperationFailed(wgt, reason or "REQUEST PAUSED - CHECK PROFILE", operation.token)
       if kind == "snapshot" then
         wgt.profileInitialReadRequested = false
         wgt.profileCapacityReadRequested = false
@@ -5279,7 +5279,7 @@ local function serviceBatteryProfileFeature(wgt, allowUi, event, touchState)
       elseif not snapshotReady and not wgt.profileAutoShown then
         profileSetEntryPrompt(wgt, true,
           unsafe and "BATTERY PROFILE LOCKED" or "READING BATTERY PROFILES",
-          wgt.profileMessage or "WAITING FOR RF TOOL...",
+          unsafeMessage or wgt.profileMessage or "WAITING FOR RF TOOL...",
           unsafe and C_RED or C_YELLOW)
       else
         profileSetEntryPrompt(wgt, false)

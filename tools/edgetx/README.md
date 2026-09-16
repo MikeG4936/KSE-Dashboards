@@ -29,6 +29,8 @@ Run a Lua fixture with the same core:
 python3 tools/edgetx/check.py --edgetx ../kse-edgetx --build-dir ../kse-edgetx-build run path/to/fixture.lua argument1
 ```
 
+The host leaves the optional string metatable disabled, matching the pinned firmware initialization. Use `string.sub(value, ...)`, not `value:sub(...)`; the self-test verifies that string-method shorthand fails. See [EdgeTX library initialization](https://github.com/EdgeTX/edgetx/blob/1511b3f29152f18c704f1f89b3608e0f71317de9/radio/src/thirdparty/Lua/src/linit.c#L91-L119).
+
 The host provides EdgeTX's ROM-backed base, math, table and string libraries, `_G` lookup and `arg` (`arg[0]` is the fixture). Its `print` writes fixture traces to host stdout instead of the firmware debug sink. Fixtures supply radio APIs and storage mocks. There is no `io`, `os`, package loader, radio scheduler, LVGL, RF transport, firmware allocator or widget instruction hook. The core retains EdgeTX's 32-bit Lua numbers/integers; `NATIVE_TARGET` enables host file loading. A no-op `debug.h` supplies the firmware trace macro. The runner uses the original parser, without the checker's observation hook. The host is intentionally separate from the production dashboard installation.
 
 These results establish parser compatibility and the behavior exercised by fixtures. They do not establish whole-radio RAM, callback timing, instruction-budget compliance, physical rendering or over-the-air RF performance. Do not install these host binaries or their bytecode outputs on a transmitter.

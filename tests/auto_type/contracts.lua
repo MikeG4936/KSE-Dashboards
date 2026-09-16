@@ -1,4 +1,5 @@
 -- Real lifecycle and render functions; only EdgeTX/LVGL/RF boundaries mocked.
+assert(getmetatable("")==nil,"rebuild the fixture runner: default EdgeTX has no string-method metatable")
 local assertions=0
 local function eq(actual,expected,message)
   assertions=assertions+1
@@ -93,7 +94,7 @@ local opts=t.opts
 eq(#t.api.options,11,"fuel setting appended after original ten")
 eq(table.concat(t.api.options[4][4],","),"Electric,Nitro,OMPHOBBY,Auto Elec/Nitro,OMP Auto","choice values")
 eq(t.api.options[4][3],1,"Electric default")
-for name,expected in pairs({["RAW 700N"]=2,["RAW 700n  "]=2,["RAW nItRo\t"]=2,
+for name,expected in pairs({["TREX 700N"]=2,["RAW 700N"]=2,["RAW 700n  "]=2,["RAW nItRo\t"]=2,
   N=2,Nitro=2,Goblin=2,RAWN=2,RAWNitro=2,["RAW 700"]=1,["Nitro 700E"]=1,["OMP M2"]=1,[""]=1}) do
   eq(auto.infer(name),expected,"literal suffix "..name)
 end
@@ -599,4 +600,16 @@ end
 getVersion=nil;f=fixture(2,2)
 eq(#f.api.options,10,"missing version API keeps conservative descriptor")
 getVersion=originalVersion
+
+-- Radio regression: switch a connected TREX 700N from Electric to Auto.
+-- Default firmware has no optional string metatable (asserted above).
+local switched=fixture(1,2)
+switched:connect("TREX 700N");switched:settle(true)
+switched.opts.HeliType=4;switched.api.update(switched.widget,switched.opts)
+switched:settle(true)
+eq(switched.audit.AUTO_HELI.ready,true,"Electric-to-Auto confirms TREX name")
+eq(switched.audit.OPT.heliType,2,"Electric-to-Auto selects Nitro")
+eq(switched.audit.name(),"TREX 700N","Electric-to-Auto displays FC name")
+eq(switched.widget.profileWasConnected,false,"Nitro ends Electric profile session")
+eq(switched:hasText("BATTERY PROFILE LOCKED"),false,"Nitro hides profile lock")
 print(tostring(assertions).." Auto/footer/fuel lifecycle assertions; real render callbacks exercised")

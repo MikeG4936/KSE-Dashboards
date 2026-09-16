@@ -54,7 +54,7 @@ getTime=function()return 0 end;getValue=function()return 0 end;getFieldInfo=func
 local current, size, reads
 fstat=function()return {size=size}end
 io={open=function()return {}end,close=function()end,read=function(_,count)
- reads=reads+1;assert(count<=54,"header read must be bounded");return current:sub(1,count)
+ reads=reads+1;assert(count<=54,"header read must be bounded");return string.sub(current,1,count)
 end}
 '''
     for label, data, size, expected in cases:

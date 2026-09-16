@@ -110,8 +110,8 @@ local AUTO_HELI = {
 -- OMP Auto is independent of Rotorflight's FC-name provider.
 local OMP_AUTO = {option=5, confirmTicks=50, ready=false, status="CONNECT OMP"}
 function AUTO_HELI.infer(name)
-  name = type(name) == "string" and string.upper(name):gsub("%s+$", "") or ""
-  if name:sub(-1) == "N" or name:sub(-5) == "NITRO" then
+  name = type(name) == "string" and string.gsub(string.upper(name), "%s+$", "") or ""
+  if string.sub(name, -1) == "N" or string.sub(name, -5) == "NITRO" then
     return HELI_NITRO
   end
   return HELI_ELECTRIC
