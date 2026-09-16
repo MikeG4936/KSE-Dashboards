@@ -1361,7 +1361,7 @@ local function profileControllerConnected(wgt)
          and (state == "connected" or state == "armed" or state == "disarmed")
 end
 
-local function profileDisplayStatus(rfToolNeeded)
+local function profileDisplayStatus(wgt, rfToolNeeded)
   if not rfToolNeeded or not profileRadioLinkLive() or not profileSharedQueue() then return nil end
   local shared = profileRfToolProvider()
   local host = shared and shared.widget
@@ -1370,8 +1370,8 @@ local function profileDisplayStatus(rfToolNeeded)
   if state == "connected" then return "CONNECTED" end
   if state ~= "armed" and state ~= "disarmed" then return nil end
   -- RF Tool can retain an earlier ARM value. Only label its arm state when
-  -- current, fresh telemetry agrees; CONNECTED alone does not confirm disarm.
-  local arm = MspAdmission.sample("ARM")
+  -- current ARM with a recent update agrees; CONNECTED alone does not confirm disarm.
+  local arm = MspAdmission.sample("ARM", wgt)
   if arm and arm >= 0 and arm <= 255 and arm <= math.floor(arm) then
     if arm % 2 == 1 and state == "armed" then return "ARMED" end
     if arm % 2 == 0 and state == "disarmed" then return "DISARMED" end
@@ -1398,6 +1398,7 @@ end
 
 local function profileResetConnection(wgt)
   if not wgt then return end
+  wgt.armSampleTick, wgt.armSampleId = nil, nil
   if wgt.armingStatusOperation then
     profileCancelOperationQueue(wgt.armingStatusOperation)
   end
@@ -1453,7 +1454,7 @@ end
 
 local function profileFlightCounterArmState(wgt)
   if wgt.profileRfState == "armed" then return true end
-  local value = MspAdmission.sample("ARM")
+  local value = MspAdmission.sample("ARM", wgt)
   if value == nil or value < 0 or value > 255
      or value > math.floor(value) then return nil end
   return math.floor(value) % 2 == 1
@@ -1677,7 +1678,7 @@ local function serviceBatteryProfileFeature(wgt, allowUi, event, touchState)
   local showConnected = rfToolNeeded and connected or false
   G.profileConnectedForDisplay = showConnected
   wgt.profileConnectedForDisplay = showConnected
-  local displayStatus = profileDisplayStatus(rfToolNeeded)
+  local displayStatus = profileDisplayStatus(wgt, rfToolNeeded)
   if displayStatus ~= wgt.profileStatusForDisplay then wgt.kseUiDirty = true end
   wgt.profileStatusForDisplay = displayStatus
   G.profileStatusForDisplay = displayStatus

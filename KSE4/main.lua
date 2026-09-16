@@ -3296,24 +3296,43 @@ local MspAdmission = (function()
 -- KSE admission policy only; RF Tool retains its transport and retry policy.
 local Admission = {}
 
-function Admission.sample(name)
+function Admission.sample(name, wgt)
   -- Resolve every safety sample by name. Display caches can survive sensor-ID
-  -- reuse, and getValue cannot establish currentness/freshness.
+  -- reuse, and getValue cannot establish currentness. RF repeats unchanged
+  -- ARM about every 3s; EdgeTX's fresh flag is only a 160-320ms update pulse.
   if type(_G.getFieldInfo) ~= "function"
-     or type(_G.getSourceValue) ~= "function" then return nil end
+     or type(_G.getSourceValue) ~= "function" then
+    wgt.armSampleTick = nil
+    return nil
+  end
   local ok, info = pcall(_G.getFieldInfo, name)
-  if not ok or type(info) ~= "table" or type(info.id) ~= "number" then return nil end
+  if not ok or type(info) ~= "table" or type(info.id) ~= "number" then
+    wgt.armSampleTick = nil
+    return nil
+  end
   local read, value, current, fresh = pcall(_G.getSourceValue, info.id)
   if type(value) == "table" then value = value.value end
-  if not read or current ~= true or fresh ~= true
-     or type(value) ~= "number" or value ~= value then return nil end
+  if not read or current ~= true or type(value) ~= "number"
+     or not (value >= 0 and value <= 255) or value > math.floor(value) then
+    wgt.armSampleTick = nil
+    return nil
+  end
+  if wgt.armSampleId ~= info.id then wgt.armSampleTick = nil end
+  wgt.armSampleId = info.id
+  local now = getTime()
+  if fresh == true then wgt.armSampleTick = now end
+  local age = wgt.armSampleTick and now - wgt.armSampleTick
+  -- Bound observed update age, not value age; never return a cached ARM value.
+  if not age or age < 0 or age > 400 then
+    wgt.armSampleTick = nil
+    return nil
+  end
   return value
 end
 
 function Admission.disarmed(wgt)
   if not WidgetOwner.current(wgt) then return false, "ANOTHER KSE DASHBOARD IS ACTIVE" end
   local reason
-  local arm = Admission.sample("ARM")
   local host = _G.rf2
   local hostState = type(host) == "table" and type(host.widget) == "table"
                     and host.widget.state or nil
@@ -3324,23 +3343,30 @@ function Admission.disarmed(wgt)
   local name = ok and type(info) == "table" and (info.filename or info.name) or nil
   local linked, rssi = false, nil
   if type(_G.getRSSI) == "function" then linked, rssi = pcall(_G.getRSSI) end
-  if OPT.simTelemetry or not linked or type(rssi) ~= "number" or not (rssi > 0)
-     or type(name) ~= "string" then
+  local changed = wgt.mspContextProvider ~= host or wgt.mspContextModel ~= name
+     or wgt.mspContextQueue ~= queue or wgt.mspContextWidget ~= widget
+     or wgt.mspContextAircraft ~= aircraft
+  local live = not OPT.simTelemetry and linked and type(rssi) == "number"
+     and rssi > 0 and type(name) == "string"
+  local ready = type(queue) == "table"
+     and (wgt.profileRfState == "connected" or wgt.profileRfState == "disarmed"
+          or wgt.profileRfState == "armed")
+     and (widget == nil or hostState == "connected" or hostState == "disarmed"
+          or hostState == "armed")
+  if changed or not live or not ready then wgt.armSampleTick = nil end
+  local arm = live and ready and Admission.sample("ARM", wgt) or nil
+  if not live then
     reason = "WAITING FOR LIVE TELEMETRY"
   elseif wgt.profileRfState == "armed" or hostState == "armed" then
     reason = "DISARM TO CHANGE PROFILE"
-  elseif type(queue) ~= "table"
-     or (wgt.profileRfState ~= "connected" and wgt.profileRfState ~= "disarmed")
-     or (widget ~= nil and hostState ~= "connected" and hostState ~= "disarmed") then
+  elseif not ready then
     reason = "WAITING FOR RF TOOL CONNECTION"
   elseif arm == nil or arm < 0 or arm > 255 or arm > math.floor(arm) then
     reason = "WAITING FOR ARM TELEMETRY"
   elseif math.floor(arm) % 2 == 1 then
     reason = "DISARM TO CHANGE PROFILE"
   end
-  if reason or wgt.mspContextProvider ~= host or wgt.mspContextModel ~= name
-     or wgt.mspContextQueue ~= queue or wgt.mspContextWidget ~= widget
-     or wgt.mspContextAircraft ~= aircraft then
+  if reason or changed then
     wgt.mspContextEpoch = (wgt.mspContextEpoch or 0) + 1
   end
   wgt.mspContextProvider, wgt.mspContextModel = host, name
@@ -4803,7 +4829,7 @@ local function profileControllerConnected(wgt)
          and (state == "connected" or state == "armed" or state == "disarmed")
 end
 
-local function profileDisplayStatus(rfToolNeeded)
+local function profileDisplayStatus(wgt, rfToolNeeded)
   if not rfToolNeeded or not profileRadioLinkLive() or not profileSharedQueue() then return nil end
   local shared = profileRfToolProvider()
   local host = shared and shared.widget
@@ -4812,8 +4838,8 @@ local function profileDisplayStatus(rfToolNeeded)
   if state == "connected" then return "CONNECTED" end
   if state ~= "armed" and state ~= "disarmed" then return nil end
   -- RF Tool can retain an earlier ARM value. Only label its arm state when
-  -- current, fresh telemetry agrees; CONNECTED alone does not confirm disarm.
-  local arm = MspAdmission.sample("ARM")
+  -- current ARM with a recent update agrees; CONNECTED alone does not confirm disarm.
+  local arm = MspAdmission.sample("ARM", wgt)
   if arm and arm >= 0 and arm <= 255 and arm <= math.floor(arm) then
     if arm % 2 == 1 and state == "armed" then return "ARMED" end
     if arm % 2 == 0 and state == "disarmed" then return "DISARMED" end
@@ -4840,6 +4866,7 @@ end
 
 local function profileResetConnection(wgt)
   if not wgt then return end
+  wgt.armSampleTick, wgt.armSampleId = nil, nil
   if wgt.armingStatusOperation then
     profileCancelOperationQueue(wgt.armingStatusOperation)
   end
@@ -4895,7 +4922,7 @@ end
 
 local function profileFlightCounterArmState(wgt)
   if wgt.profileRfState == "armed" then return true end
-  local value = MspAdmission.sample("ARM")
+  local value = MspAdmission.sample("ARM", wgt)
   if value == nil or value < 0 or value > 255
      or value > math.floor(value) then return nil end
   return math.floor(value) % 2 == 1
@@ -5128,7 +5155,7 @@ local function serviceBatteryProfileFeature(wgt, allowUi, event, touchState)
   local showConnected = rfToolNeeded and connected or false
   G.profileConnectedForDisplay = showConnected
   wgt.profileConnectedForDisplay = showConnected
-  local displayStatus = profileDisplayStatus(rfToolNeeded)
+  local displayStatus = profileDisplayStatus(wgt, rfToolNeeded)
   if displayStatus ~= wgt.profileStatusForDisplay then wgt.kseUiDirty = true end
   wgt.profileStatusForDisplay = displayStatus
   G.profileStatusForDisplay = displayStatus

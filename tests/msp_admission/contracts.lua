@@ -156,8 +156,8 @@ eq("picker uses same disarmed state",a.profiles.unsafe(w),false)
 local invalids={
  {"missing ARM",function() env.ids.ARM=nil end},
  {"noncurrent ARM",function() env.samples[77].current=false end},
- {"stale ARM",function() env.samples[77].fresh=false end},
- {"unknown ARM freshness",function() env.samples[77].fresh=nil end},
+ {"unknown ARM currentness",function() env.samples[77].current=nil end},
+ {"nonboolean ARM currentness",function() env.samples[77].current=1 end},
  {"fractional ARM",function() env.samples[77].value=0.5 end},
  {"negative ARM",function() env.samples[77].value=-2 end},
  {"overflow ARM",function() env.samples[77].value=256 end},
@@ -188,14 +188,14 @@ for _,knownProfile in ipairs({false,true}) do
   w.profileInitialReadValid=knownProfile
   w.profileActive=knownProfile and 1 or nil
   assert(a.profiles.snapshot(w))
-  env.samples[77].fresh=false
+  env.samples[77].current=false
   service(a,w,nil,true)
   local label="interrupted snapshot known="..tostring(knownProfile)
   eq(label.." shows locked title",w.auditPrompt.title,"BATTERY PROFILE LOCKED")
-  eq(label.." explains stale ARM",w.auditPrompt.detail,"WAITING FOR ARM TELEMETRY")
+  eq(label.." explains expired ARM",w.auditPrompt.detail,"WAITING FOR ARM TELEMETRY")
   eq(label.." discards operation",w.profileOperation,nil)
   eq(label.." admits no new request",#q.messageQueue,0)
-  env.samples[77].fresh=true; env.samples[77].value=1
+  env.samples[77].current=true; env.samples[77].value=1
   service(a,w,nil,true)
   eq(label.." updates blocker after arming",w.auditPrompt.detail,"DISARM TO CHANGE PROFILE")
   eq(label.." remains blocked while armed",#q.messageQueue,0)
@@ -215,24 +215,122 @@ service(a,w,nil,true)
 eq("initial missing ARM explains lock",w.auditPrompt.detail,"WAITING FOR ARM TELEMETRY")
 eq("initial missing ARM sends nothing",#q.messageQueue,0)
 
-for _,interruption in ipairs({"stale ARM","armed ARM","context changed"}) do
+for _,interruption in ipairs({"expired ARM","armed ARM","context changed"}) do
   a,w,q=setup(1,2,true)
   assert(a.profiles.begin(w,"select",2))
   local expected="REQUEST PAUSED - CHECK PROFILE"
-  if interruption=="stale ARM" then
-    env.samples[77].fresh=false; expected="WAITING FOR ARM TELEMETRY"
+  if interruption=="expired ARM" then
+    env.samples[77].current=false; expected="WAITING FOR ARM TELEMETRY"
   elseif interruption=="armed ARM" then
     env.samples[77].value=1; expected="DISARM TO CHANGE PROFILE"
   else
     -- An observed interruption invalidates the old context even if ARM has
     -- recovered by the next service. Do not invent a current arming blocker.
-    env.samples[77].fresh=false; assert(not disarmed(a,w))
-    env.samples[77].fresh=true
+    env.samples[77].current=false; assert(not disarmed(a,w))
+    env.samples[77].current=true
   end
   service(a,w,nil,true)
   eq(interruption.." selection notice explains interruption",w.auditPrompt.detail,expected)
   eq(interruption.." selection is not automatically repeated",w.profileOperation,nil)
   eq(interruption.." queues no selection continuation",#q.messageQueue,0)
+end
+
+-- The third API result is a short update pulse, not telemetry validity.
+-- All entry points must keep reading ARM even when that pulse has expired.
+for _,gate in ipairs(gates) do
+  a,w,q=setup(1,2,true); assert(disarmed(a,w)); env.samples[77].fresh=false
+  eq(gate[1].." current disarmed admission between packets",gate[2](a,w),true)
+  a,w,q=setup(1,2,true); assert(disarmed(a,w)); env.samples[77].fresh=false
+  env.samples[77].value=1
+  eq(gate[1].." nonfresh armed ARM blocks immediately",gate[2](a,w),false)
+  eq(gate[1].." no armed work queued between packets",#q.messageQueue,0)
+  a,w,q=setup(1,2,true); assert(disarmed(a,w)); env.samples[77].fresh=false
+  rf2.widget.state="armed"
+  eq(gate[1].." host arming still overrides disarmed sample",gate[2](a,w),false)
+end
+a,w,q=setup(); env.samples[77].fresh=nil
+eq("startup waits for an observed ARM update",disarmed(a,w),false)
+env.samples[77].fresh=true; assert(disarmed(a,w));env.samples[77].fresh=false
+env.now=1400
+eq("ARM update evidence survives four-second boundary",disarmed(a,w),true)
+env.now=1401
+eq("ARM update evidence expires while sensor is still current",disarmed(a,w),false)
+env.samples[77].fresh=true;assert(disarmed(a,w));env.samples[77].fresh=false
+env.now=1400
+eq("clock rollback cannot retain ARM update evidence",disarmed(a,w),false)
+env.now=1410
+eq("clock recovery alone cannot restore invalidated evidence",disarmed(a,w),false)
+for _,bad in ipairs({-1,0.5,256,"bad"}) do
+  a,w,q=setup(); assert(disarmed(a,w))
+  env.samples[77].value=bad
+  eq("invalid fresh ARM cannot preserve proof "..tostring(bad),disarmed(a,w),false)
+  env.samples[77].value=0;env.samples[77].fresh=false
+  eq("valid value needs a new update after invalid ARM "..tostring(bad),disarmed(a,w),false)
+  env.samples[77].fresh=true
+  eq("fresh valid ARM recovers after invalid "..tostring(bad),disarmed(a,w),true)
+end
+for _,cause in ipairs({"link","host initializing","missing queue","sensor ID","reset"}) do
+  a,w,q=setup(); assert(disarmed(a,w))
+  if cause=="link" then env.rssi=0
+  elseif cause=="host initializing" then rf2.widget.state="initializing";w.profileRfState="armed"
+  elseif cause=="missing queue" then rf2.mspQueue=nil;w.profileRfState="armed"
+  elseif cause=="sensor ID" then
+    env.ids.ARM=80;env.samples[80]={value=0,current=true,fresh=false}
+  else a.profiles.reset(w) end
+  env.samples[77].fresh=false
+  eq(cause.." invalidates observed ARM update",disarmed(a,w),false)
+  env.rssi=100;rf2.widget.state="disarmed";w.profileRfState="disarmed"
+  rf2.mspQueue=q;env.ids.ARM=77
+  eq(cause.." requires a new ARM update after recovery",disarmed(a,w),false)
+  env.samples[77].fresh=true
+  eq(cause.." accepts newly observed ARM update",disarmed(a,w),true)
+end
+
+-- Losing a whole ARM heartbeat is different from losing its short pulse.
+a,w,q=setup(1,2,true);assert(a.profiles.begin(w,"select",2))
+local expired=w.profileOperation.messages[1]
+env.samples[77].fresh=false;service(a,w,1401,false)
+eq("expired update cancels owned operation",w.profileOperation,nil)
+eq("expired update removes pending request",#q.messageQueue,0)
+env.samples[77].fresh=true;assert(disarmed(a,w));expired.processReply(expired,{})
+eq("late expired callback cannot revive selection",w.profileOperation,nil)
+
+-- Actual service plus the upstream queue: a normal 3-second ARM cadence must
+-- survive the existing 1.5-second FC settle and a reply between update pulses.
+for mode=1,2 do
+  a,w,q=setup(mode,2)
+  if mode==2 then w.profileWasConnected=false end
+  for tick=1000,1140,10 do
+    env.samples[77].fresh=(tick-1000)%300<30
+    service(a,w,tick,false)
+    assert(a.FC.status=="WAITING","normal ARM interval interrupts FC settle")
+    assert(not a.FC.pending,"flight stats started before existing settle")
+  end
+  service(a,w,1150,false)
+  eq("mode "..mode.." starts FC read after original settle",a.FC.pending,true)
+  eq("mode "..mode.." queues FC read between ARM packets",w.profileOperation.kind,"flightStats")
+  -- The new request enters the queue after that pass's upstream servicing.
+  service(a,w,1160,false)
+  reply(14,{7,0,0,0,0,0,0,0,0,0,0,0,15});service(a,w,1170,false)
+  eq("mode "..mode.." accepts FC reply between ARM packets",a.FC.count,7)
+  for tick=1180,1610,10 do
+    env.samples[77].fresh=(tick-1000)%300<30
+    service(a,w,tick,false)
+    assert(a.FC.count==7 and a.FC.status=="AVAILABLE","normal ARM interval loses FC count")
+  end
+  eq("mode "..mode.." reads FC once across normal ARM gaps",commands(),"14")
+  arm(w);env.samples[77].fresh=true;service(a,w,1700,false)
+  w.armingStatusNextAt=1000000 -- keep this count-read scenario independent of diagnostics
+  env.samples[77].value=0;rf2.widget.state="disarmed";w.profileRfState="disarmed"
+  for tick=1710,1850,10 do
+    env.samples[77].fresh=tick<1740
+    service(a,w,tick,false)
+    assert(not a.FC.pending,"post-flight read ignored original settle")
+  end
+  service(a,w,1860,false);service(a,w,1870,false)
+  reply(14,{8,0,0,0,0,0,0,0,0,0,0,0,15});service(a,w,1880,false)
+  eq("mode "..mode.." accepts post-flight count between ARM packets",a.FC.count,8)
+  eq("mode "..mode.." one initial and one post-flight read",commands(),"14,14")
 end
 
 local unrelatedSensors={
@@ -330,7 +428,7 @@ a,w,q=setup(); assert(disarmed(a,w)); assert(a.profiles.begin(w,"select",2))
 eq("selection admits only set",#q.messageQueue,1)
 queueStep(q,176,{})
 eq("set ACK does not directly queue verify",#q.messageQueue,0)
-arm(w); service(a,w,1060,false)
+arm(w); env.samples[77].fresh=false; service(a,w,1060,false)
 eq("arming after set ACK prevents verification",commands(),"176")
 
 a,w,q=setup(); assert(disarmed(a,w)); assert(a.profiles.begin(w,"select",2))
@@ -338,7 +436,7 @@ queueStep(q,176,{}); service(a,w,1060,false)
 eq("later disarmed pass admits verification",(q.currentMessage or q.messageQueue[1]).command,175)
 queueStep(q,175,{1})
 eq("verify ACK does not directly queue save",#q.messageQueue,0)
-arm(w); service(a,w,1080,false)
+arm(w); env.samples[77].fresh=false; service(a,w,1080,false)
 eq("arming after verify prevents EEPROM save",commands(),"176,175")
 
 a,w,q=setup(); assert(disarmed(a,w)); assert(a.profiles.begin(w,"select",2))

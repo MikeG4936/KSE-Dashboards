@@ -366,12 +366,28 @@ for _,mode in ipairs({1,2,4}) do
     footer(f,"ARMED","arm before next telemetry sample")
     eq(#f.requests,requests,"armed footer adds no request")
     eq(f.builds,builds,"arm status retains UI objects")
+    -- Unchanged RF ARM updates roughly every 3 seconds. The short EdgeTX
+    -- fresh pulse must not make either footer alternate with CONNECTED.
+    for tick=0,600,10 do
+      __mock.values.ARM.fresh=tick%300<30
+      f:step(true,10)
+      assert(f.widget.profileStatusForDisplay=="ARMED","armed footer flickers between ARM updates")
+    end
+    footer(f,"ARMED","armed between normal telemetry updates")
+    eq(#f.requests,requests,"normal armed telemetry gaps admit no MSP")
+    __mock.values.ARM.fresh=true
     f.host.state="disarmed";f:step(true,1)
     footer(f,"CONNECTED","contradictory host does not claim disarm")
     __mock.values.ARM.value=2;f:step(true,1)
     footer(f,"DISARMED","only ARM bit zero denotes arming")
     __mock.values.ARM.fresh=false;f:step(true,1)
-    footer(f,"CONNECTED","stale ARM")
+    footer(f,"DISARMED","current ARM between updates")
+    for tick=0,600,10 do
+      __mock.values.ARM.fresh=tick%300<30
+      f:step(true,10)
+      assert(f.widget.profileStatusForDisplay=="DISARMED","disarmed footer flickers between ARM updates")
+    end
+    footer(f,"DISARMED","disarmed across normal telemetry updates")
     __mock.values.ARM.fresh=true;__mock.values.ARM.current=false;f:step(true,1)
     footer(f,"CONNECTED","noncurrent ARM")
     __mock.values.ARM.current=true
