@@ -19,6 +19,7 @@
 !/docs/rf-adapter-design.md
 !/docs/telemetry-configuration-audit.md
 !/docs/omp-auto-identification-feasibility.md
+!/docs/image-resource-limits.md
 
 # Host-side compatibility tooling and fixtures; never copy these to the radio.
 /tools/*

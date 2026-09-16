@@ -211,7 +211,7 @@ Image: /IMAGES/Goblin RAW.png
 
 Names are case-sensitive. Unsuitable filename characters become underscores: `Goblin/RAW` uses `Goblin_RAW.png`.
 
-Images must be no larger than **480 × 272 pixels** and **100 KiB (102,400 bytes)**. Smaller images scale to fit. If an image is too large or cannot be opened, KSE shows a default image or placeholder instead.
+Images may be up to **512 KiB (524,288 bytes)**, with no side longer than **512 pixels** and no more than **130,560 total pixels** (width × height). For example, **300 × 280**, **360 × 360**, **480 × 272** and **272 × 480** all fit; **512 × 512** is too large. KSE scales the image to fit its panel. If an image is too large or cannot be opened, KSE shows a default image or placeholder instead.
 
 When no model image is found, KSE uses `default.png` in its dashboard folder. To use the supplied alternate, back up the original, rename `default1.png` to `default.png`, and reload the widget or restart EdgeTX. Leaving it named `default1.png` does not select it. For dashboard colors, see the [theme gallery](theme-gallery/README.md).
 
