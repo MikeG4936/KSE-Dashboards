@@ -33,13 +33,34 @@ def main():
     struct.pack_into("<I", oversized_dib, 14, 0x7fffffff)
     cases = [
         ('PNG', png(), 102400, True), ('small PNG', png(1, 1), 54, True),
-        ('oversize bytes', png(), 102401, False), ('wide PNG', png(481), 54, False),
-        ('tall PNG', png(height=273), 54, False), ('zero PNG', png(0), 54, False),
+        ('file limit', png(), 524288, True), ('oversize bytes', png(), 524289, False),
+        ('TREX proportions', png(300, 280), 37276, True),
+        ('square PNG', png(360, 360), 54, True),
+        ('portrait PNG', png(272, 480), 54, True),
+        ('wide area boundary', png(512, 255), 54, True),
+        ('tall area boundary', png(255, 512), 54, True),
+        ('wide pixel overflow', png(512, 256), 54, False),
+        ('tall pixel overflow', png(256, 512), 54, False),
+        ('square pixel overflow', png(362, 362), 54, False),
+        ('large square', png(512, 512), 54, False),
+        ('wide edge overflow', png(513, 1), 54, False),
+        ('tall edge overflow', png(1, 513), 54, False),
+        ('zero PNG', png(0), 54, False),
+        ('multiplication overflow', png(65536, 65536), 54, False),
         ('negative PNG', png(0xffffffff), 54, False), ('short PNG', png()[:24], 24, False),
         ('overflow DIB size', bytes(oversized_dib), 54, False),
         ('BMP', bmp(), 54, True), ('top-down BMP', bmp(height=-272), 54, True),
-        ('core BMP', bmp(core=True), 54, True), ('wide BMP', bmp(width=481), 54, False),
-        ('tall BMP', bmp(height=-273), 54, False), ('negative BMP width', bmp(width=-1), 54, False),
+        ('core BMP', bmp(core=True), 54, True),
+        ('square BMP', bmp(360, 360), 54, True),
+        ('portrait core BMP', bmp(272, 480, core=True), 54, True),
+        ('top-down TREX BMP', bmp(300, -280), 54, True),
+        ('32-bit BMP file budget', bmp(512, 255), 54 + 512 * 255 * 4, True),
+        ('wide BMP', bmp(513, 1), 54, False),
+        ('tall BMP', bmp(1, -513), 54, False),
+        ('BMP pixel overflow', bmp(512, -256), 54, False),
+        ('core BMP pixel overflow', bmp(512, 512, core=True), 54, False),
+        ('BMP multiplication overflow', bmp(65536, 65536), 54, False),
+        ('negative BMP width', bmp(width=-1), 54, False),
         ('invalid BMP height', bmp(height=-2147483648), 54, False),
         ('unrecognized', bytes(54), 54, False), ('read truncated', png()[:30], 54, False),
     ]
@@ -60,7 +81,7 @@ end}
     for label, data, size, expected in cases:
         body += 'current=' + quoted(data) + ';size=' + str(size) + ';reads=0\n'
         body += f'assert(checkImage("test")=={str(expected).lower()},"{label}")\n'
-        if size > 102400:
+        if size > 524288:
             body += 'assert(reads==0,"oversized file must be rejected before reading")\n'
     body += '''
 fstat=function()error("removed card")end;assert(checkImage("test")==false)

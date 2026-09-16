@@ -414,6 +414,8 @@ Remove misleading references to immutable StacyDash/UltiDash source authority an
 
 ### 15. Make image limits enforceable without decoding an oversized image first
 
+**Current image policy:** accept PNG/BMP candidates up to **512 KiB**, with each dimension at most **512 pixels** and total area at most **130,560 pixels**. This retains the original 480×272 maximum pixel count while accepting square and portrait images, including 300×280. Check each dimension before multiplying to avoid 32-bit integer overflow. Preserve the bounded header read and existing fallback/cache behavior. The larger encoded-file allowance can increase SD reads and decoder workspace; it does not increase the maximum decoded pixel count. See [image loader evidence and limits](image-resource-limits.md) for the native decoder/cache costs and hardware-validation boundary. The original findings below remain dated baseline evidence.
+
 **Locations:** KSE4 2736; KSE5 2262; README image requirements.
 
 Both resolvers check existence only. The README's 100 KB / 480×272 limits are not enforced, so an oversized user image can still be passed to LVGL. This is a robustness improvement for resource-constrained radios, not proof that supplied images are currently problematic.

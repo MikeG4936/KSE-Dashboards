@@ -2591,7 +2591,7 @@ local function modelImageAllowed(path)
   if type(stat) ~= "function" then return false end
   local ok, info = pcall(stat, path)
   local size = ok and type(info) == "table" and tonumber(info.size) or nil
-  if not size or size < 26 or size > 100 * 1024 then return false end
+  if not size or size < 26 or size > 512 * 1024 then return false end
   local opened, file = pcall(io.open, path, "r")
   if not opened or not file then return false end
   local readOk, header = pcall(io.read, file, math.min(54, size))
@@ -2620,8 +2620,11 @@ local function modelImageAllowed(path)
       if height < 0 then height = -height end
     end
   end
+  -- Preserve the old 480x272 pixel budget while allowing other image shapes.
+  -- Bound both dimensions first so multiplication cannot overflow EdgeTX integers.
   return width ~= nil and height ~= nil
-         and width > 0 and width <= 480 and height > 0 and height <= 272
+         and width > 0 and width <= 512 and height > 0 and height <= 512
+         and width * height <= 480 * 272
 end
 
 local function resolveModelImagePath()
