@@ -18,6 +18,7 @@ local function backgroundOwned(widget)
   batteryProfiles.service(widget, false, nil, nil)
 end
 local function createOwned(zone, options)
+  A.fuelCheckArmed = nil
   OPT.autoHeliType = false
   OMP_AUTO.reset()
   AUTO_HELI.ready, AUTO_HELI.name = false, nil

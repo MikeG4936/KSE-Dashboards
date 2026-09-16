@@ -90,7 +90,7 @@ local t=fixture()
 local a=t.audit
 local auto=a.AUTO_HELI
 local opts=t.opts
-eq(#t.api.options,10,"ten persisted options")
+eq(#t.api.options,11,"fuel setting appended after original ten")
 eq(table.concat(t.api.options[4][4],","),"Electric,Nitro,OMPHOBBY,Auto Elec/Nitro,OMP Auto","choice values")
 eq(t.api.options[4][3],1,"Electric default")
 for name,expected in pairs({["RAW 700N"]=2,["RAW 700n  "]=2,["RAW nItRo\t"]=2,
@@ -405,4 +405,198 @@ end
 local omp=fixture(3,2);omp:connect("M2 Fixture");omp:settle(true)
 footer(omp,nil,"OMP does not display RF state")
 eq(#omp.requests,0,"OMP footer does not start RF work")
-print(tostring(assertions).." Auto/footer lifecycle assertions; real render callbacks exercised")
+-- Fuel reminder uses the real Timer 1 and lifecycle in both counter modes.
+local function fuelEvents(kind)
+  local count=0
+  for _,event in ipairs(__mock.events) do
+    if event==kind then count=count+1 end
+  end
+  return count
+end
+local function fuelFixture(selection,counter,initial,missingClip)
+  local f=fixture(selection,counter)
+  if not missingClip then fs.files["/WIDGETS/"..variant.."/BatterySounds/fuel.wav"]="audio" end
+  __mock.timer={start=0,value=initial or 0}
+  f:connect(selection==1 and "RAW Electric" or "RAW Nitro");f:settle(false)
+  __mock.events={}
+  return f
+end
+local function timerStep(f,value,start,visible)
+  __mock.timer={value=value,start=start or 0};f:step(visible)
+end
+for _,counter in ipairs({1,2}) do
+  for _,selection in ipairs({2,4}) do
+    local f=fuelFixture(selection,counter)
+    eq(f.audit.OPT.heliType,2,"fuel test confirms Nitro")
+    eq(#f.api.options,11,"fuel setting retains original ten options")
+    f.host.state="armed";__mock.values.ARM.value=1;f:step(false)
+    local requests=#f.requests
+    timerStep(f,359);f:settle(false)
+    eq(fuelEvents("file:fuel.wav"),0,"idle/paused timer cannot reach threshold")
+    timerStep(f,360)
+    eq(fuelEvents("file:fuel.wav"),1,"hidden Nitro alerts at six minutes")
+    eq(fuelEvents("haptic:15"),1,"one queued fuel vibration")
+    eq(__mock.hapticFlags,0,"fuel does not replace urgent haptics")
+    eq(#f.requests,requests,"fuel threshold while armed admits no MSP")
+    timerStep(f,370,nil,true)
+    f.opts.Theme=2;f.api.update(f.widget,f.opts);f:step(true)
+    f.opts.CountSrc=counter==1 and 2 or 1;f.api.update(f.widget,f.opts)
+    f:step(false)
+    f.rssi=0;f:step(false);f.rssi=100;f:settle(false)
+    f:disconnect();f:step(false);f:connect("RAW Nitro");f:settle(false)
+    eq(fuelEvents("file:fuel.wav"),1,"theme/counter/link/reconnect cannot repeat reminder")
+    f.opts.HeliType=1;f.api.update(f.widget,f.opts);f:step(false)
+    f.opts.HeliType=selection;f.api.update(f.widget,f.opts);f:settle(false)
+    eq(fuelEvents("file:fuel.wav"),1,"type toggles cannot rearm reminder")
+    timerStep(f,0);timerStep(f,361,nil,true)
+    eq(fuelEvents("file:fuel.wav"),2,"timer reset rearms one reminder")
+    timerStep(f,390)
+    eq(fuelEvents("file:fuel.wav"),2,"no repeated flight reminder")
+  end
+end
+for _,selection in ipairs({1,3,5}) do
+  local f=fuelFixture(selection,2)
+  timerStep(f,360);timerStep(f,400)
+  eq(fuelEvents("file:fuel.wav"),0,"Electric/OMP never get fuel speech")
+  eq(fuelEvents("haptic:15"),0,"Electric/OMP never get fuel vibration")
+end
+local f=fuelFixture(4,2)
+f.rssi=0;timerStep(f,360)
+eq(fuelEvents("file:fuel.wav"),0,"unidentified Auto waits")
+f.rssi=100;f:settle(false)
+eq(fuelEvents("file:fuel.wav"),1,"confirmed Nitro delivers pending reminder once")
+f=fuelFixture(4,2)
+f:connect("RAW Electric");f:settle(false);timerStep(f,360)
+f:connect("RAW Nitro");f:settle(false)
+eq(fuelEvents("file:fuel.wav"),0,"electric timer run does not become Nitro reminder")
+f=fuelFixture(2,2,400);timerStep(f,401)
+eq(fuelEvents("file:fuel.wav"),0,"late widget startup has no overdue replay")
+timerStep(f,0);timerStep(f,360)
+eq(fuelEvents("file:fuel.wav"),1,"late startup becomes eligible after reset")
+-- A replacement widget, including the other variant, does not replay the run.
+local replacement=dofile(otherDashboardPath)
+local replacementOptions={}
+for _,option in ipairs(replacement.options) do replacementOptions[option[1]]=option[3] end
+replacementOptions.HeliType=2;replacementOptions.CountSrc=2
+local other=replacement.create({x=0,y=0,w=LCD_W,h=LCD_H},replacementOptions)
+__mock.now=__mock.now+501;replacement.refresh(other,nil,nil)
+eq(fuelEvents("file:fuel.wav"),1,"widget takeover cannot replay expired timer")
+f=fuelFixture(2,2)
+timerStep(f,600,600);timerStep(f,241,600)
+eq(fuelEvents("file:fuel.wav"),0,"countdown before six minutes")
+timerStep(f,240,600)
+eq(fuelEvents("file:fuel.wav"),1,"countdown uses elapsed flight time")
+timerStep(f,600,600);timerStep(f,230,600)
+eq(fuelEvents("file:fuel.wav"),2,"countdown reset rearms reminder")
+f=fuelFixture(2,2)
+f.audit.OPT.simTelemetry=true;timerStep(f,360)
+eq(fuelEvents("file:fuel.wav"),0,"simulation is silent")
+f.audit.OPT.simTelemetry=false;timerStep(f,0)
+local realTimer=model.getTimer
+model.getTimer=function() error("timer unavailable") end
+f:step(false);eq(fuelEvents("file:fuel.wav"),0,"failed timer read is silent")
+model.getTimer=realTimer;timerStep(f,360)
+eq(fuelEvents("file:fuel.wav"),1,"valid timer recovers")
+f=fuelFixture(2,2,0,true)
+playTone=function(hz,length,pause,flags)
+  __mock.events[#__mock.events+1]="tone:"..tostring(hz)
+  eq(flags,0,"fallback tone is queued")
+end
+timerStep(f,360)
+eq(fuelEvents("file:fuel.wav"),0,"missing voice clip is not requested")
+eq(fuelEvents("tone:1500"),1,"first fallback tone")
+eq(fuelEvents("tone:2000"),1,"second fallback tone")
+eq(fuelEvents("haptic:15"),1,"missing clip retains vibration")
+timerStep(f,370)
+eq(fuelEvents("tone:1500"),1,"fallback cannot loop")
+playTone=nil
+-- Slot 11 changes deliberately from a duration string to a native choice;
+-- the original ten settings stay in place. Native type migration resets it.
+f=fuelFixture(2,2)
+eq(f.api.options[11][1],"FuelCheck","fuel option is last")
+eq(f.api.options[11][2],10,"duration uses native CHOICE option")
+eq(f.api.options[11][3],25,"new widget defaults to six-minute choice")
+eq(f.api.translate("FuelCheck","en"),"Fuel Check Timer","native settings label")
+local durations=f.api.options[11][4]
+eq(#durations,121,"Off plus 120 quarter-minute choices")
+eq(durations[1],"Off","explicit Off label")
+eq(durations[25],"06:00","default choice displays six minutes")
+eq(durations[121],"30:00","last choice displays thirty minutes")
+for i,label in ipairs(durations) do
+  f.opts.FuelCheck=i;f.api.update(f.widget,f.opts)
+  local seconds=(i-1)*15
+  eq(f.audit.OPT.fuelCheckSeconds,seconds,"choice maps to elapsed seconds")
+  if i>1 then
+    eq(label,string.format("%02d:%02d",math.floor(seconds/60),seconds%60),
+       "choice labels stay in quarter-minute order")
+  end
+end
+f.opts.FuelCheck=1;f.api.update(f.widget,f.opts)
+timerStep(f,359);timerStep(f,360);timerStep(f,1801)
+eq(fuelEvents("file:fuel.wav"),0,"zero duration disables speech")
+eq(fuelEvents("haptic:15"),0,"zero duration disables vibration")
+f.opts.FuelCheck=25;f.api.update(f.widget,f.opts);f:step(false)
+eq(fuelEvents("file:fuel.wav"),0,"enabling after threshold does not backfill")
+timerStep(f,0);timerStep(f,360)
+eq(fuelEvents("file:fuel.wav"),1,"enabled setting works after reset")
+f=fuelFixture(4,1)
+f.opts.FuelCheck=27;f.api.update(f.widget,f.opts)
+timerStep(f,389);eq(fuelEvents("file:fuel.wav"),0,"custom duration not early")
+timerStep(f,390);eq(fuelEvents("file:fuel.wav"),1,"minutes and seconds threshold")
+timerStep(f,400);eq(fuelEvents("file:fuel.wav"),1,"custom duration does not repeat")
+f.opts.FuelCheck=10;f.api.update(f.widget,f.opts);f:step(false)
+eq(fuelEvents("file:fuel.wav"),1,"lowering past threshold does not backfill")
+timerStep(f,0);timerStep(f,135)
+eq(fuelEvents("file:fuel.wav"),2,"changed duration rearms after reset")
+for _,duration in ipairs({{2,15},{5,60},{26,375},{120,1785},{121,1800}}) do
+  f=fuelFixture(2,2);f.opts.FuelCheck=duration[1];f.api.update(f.widget,f.opts)
+  eq(f.audit.OPT.fuelCheckSeconds,duration[2],"duration selected exactly")
+  timerStep(f,0);timerStep(f,duration[2]-1)
+  eq(fuelEvents("file:fuel.wav"),0,"duration boundary not early")
+  timerStep(f,duration[2])
+  eq(fuelEvents("file:fuel.wav"),1,"duration boundary works")
+end
+f=fuelFixture(2,2)
+f.opts.FuelCheck=4;f.api.update(f.widget,f.opts)
+timerStep(f,600,600);timerStep(f,556,600)
+eq(fuelEvents("file:fuel.wav"),0,"seconds-only countdown not early")
+timerStep(f,555,600)
+eq(fuelEvents("file:fuel.wav"),1,"seconds-only countdown alert")
+timerStep(f,600,600);timerStep(f,555,600)
+eq(fuelEvents("file:fuel.wav"),2,"seconds-only countdown reset")
+f=fuelFixture(2,2)
+for _,invalid in ipairs({0,-1,1.5,25.5,122,360,math.huge,-math.huge,0/0,
+                         "", " ", "25", "06:00", "06:30", true, false, {}}) do
+  f.opts.FuelCheck=invalid;f.api.update(f.widget,f.opts)
+  eq(f.audit.OPT.fuelCheckSeconds,0,"invalid or legacy choice disables reminder")
+  timerStep(f,0);timerStep(f,390)
+end
+eq(fuelEvents("file:fuel.wav"),0,"invalid duration never announces")
+eq(fuelEvents("haptic:15"),0,"invalid duration never vibrates")
+-- A native type reset can supply zero before defaults have been parsed; after
+-- defaults are parsed it can supply 25. Neither reinterprets the old text.
+f.opts.FuelCheck=0;f.api.update(f.widget,f.opts)
+eq(f.audit.OPT.fuelCheckSeconds,0,"migrated zero field stays safely off")
+f.opts.FuelCheck=27;f.api.update(f.widget,f.opts)
+timerStep(f,0);timerStep(f,390)
+eq(fuelEvents("file:fuel.wav"),1,"reselected duration works after migration")
+f.opts.FuelCheck=25;f.api.update(f.widget,f.opts);f:step(false)
+eq(fuelEvents("file:fuel.wav"),1,"migrated default cannot backfill overdue reminder")
+f.opts.FuelCheck=nil;f.api.update(f.widget,f.opts)
+eq(f.audit.OPT.fuelCheckSeconds,360,"missing old-firmware setting uses six minutes")
+local originalVersion=getVersion
+for _,ver in ipairs({{2,11,5,10},{2,12,1,11},{2,12,4,11},{3,0,0,11}}) do
+  getVersion=function() return "test", "radio", ver[1],ver[2],ver[3],"EdgeTX" end
+  f=fuelFixture(2,2)
+  eq(#f.api.options,ver[4],"version-compatible option count")
+  eq(f.api.options[10][1],"CountSrc","original last option retains its slot")
+  if ver[4]==10 then
+    eq(f.opts.FuelCheck,nil,"old firmware has no unsupported option")
+    timerStep(f,360)
+    eq(fuelEvents("file:fuel.wav"),1,"old firmware retains fixed six-minute reminder")
+  end
+end
+getVersion=nil;f=fixture(2,2)
+eq(#f.api.options,10,"missing version API keeps conservative descriptor")
+getVersion=originalVersion
+print(tostring(assertions).." Auto/footer/fuel lifecycle assertions; real render callbacks exercised")

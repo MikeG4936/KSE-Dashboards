@@ -232,8 +232,8 @@ __runContracts=function()
   check("timer elapsed clamped",t.timerElapsedSeconds({start=120,value=130}),0)
 
   local names={"Theme","TxBatt","MinFlight","HeliType","BattRsv","BattVoice",
-               "RxPackMin","RxPackMax","MotorSw","CountSrc"}
-  check("persisted option count",#t.options,10)
+               "RxPackMin","RxPackMax","MotorSw","CountSrc","FuelCheck"}
+  check("persisted option count",#t.options,11)
   for i,name in ipairs(names) do check("option slot "..i,t.options[i][1],name) end
   check("default counter",t.options[10][3],2)
   t.applyOptions({MinFlight=-30,BattRsv=99,CountSrc=99,RxPackMin="66",RxPackMax="840"})

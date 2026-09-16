@@ -68,6 +68,22 @@ local function isPhysicalMotorSource(src)
   return not inspected
 end
 -- @include variant:option_theme.lua
+function G.addFuelOption(options)
+  -- EdgeTX 2.11 stores only ten widget settings; 2.12 increases this to 50.
+  -- Keep the older descriptor unchanged instead of relying on truncation.
+  if not getVersion then return end
+  local _, _, major, minor = getVersion()
+  if type(major) == "number" and type(minor) == "number"
+     and (major > 2 or (major == 2 and minor >= 12)) then
+    -- Build once with the descriptor; native settings handle wheel selection.
+    local durations = {"Off"}
+    for seconds = 15, 1800, 15 do
+      durations[#durations+1] = string.format("%02d:%02d",
+                                            math.floor(seconds / 60), seconds % 60)
+    end
+    options[#options+1] = {"FuelCheck", CHOICE, 25, durations} -- 06:00
+  end
+end
 local function applyOptions(opts)
   opts = opts or {}
   G.applyOptionTheme(tonumber(opts.Theme) or 0)
@@ -112,8 +128,17 @@ local function applyOptions(opts)
     if OPT.reservePct < 0 then OPT.reservePct = 0 end
     if OPT.reservePct > 50 then OPT.reservePct = 50 end
     OPT.battVoice   = (opts.BattVoice == 1 or opts.BattVoice == true)
-    -- CountSrc keeps slot 10 so the first nine persisted options remain in
-    -- place and the EdgeTX ten-option ceiling is respected.
+    local fuelSeconds = 360 -- fixed reminder on older ten-option firmware
+    if opts.FuelCheck ~= nil then
+      local choice = opts.FuelCheck
+      -- EdgeTX resets a saved slot when its type changes. Until reselected,
+      -- zero/invalid indices stay Off; do not reinterpret old duration text.
+      fuelSeconds = type(choice) == "number" and choice >= 1 and choice <= 121
+                    and choice <= math.floor(choice) and (choice - 1) * 15 or 0
+    end
+    if OPT.fuelCheckSeconds ~= fuelSeconds then A.fuelCheckArmed = nil end
+    OPT.fuelCheckSeconds = fuelSeconds
+    -- CountSrc retains its original slot and persisted type.
     local countMode = tonumber(opts.CountSrc or opts["Flight Counter"])
     if countMode ~= FC.RADIO
        and countMode ~= FC.ROTORFLIGHT then

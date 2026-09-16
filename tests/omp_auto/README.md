@@ -10,7 +10,7 @@ The runner instruments temporary copies of both complete dashboards with a test-
 
 The fixture extends the shared behavior/storage mocks with native telemetry slot metadata: `telem1` source IDs advance by three per slot, valid empty slots return tables, raw and calculated sensors remain distinct, and source values report current/fresh flags. Contracts cover:
 
-- Appended option order, ten saved slots, local counter override without rewriting its saved preference, and manual OMP fallback.
+- Appended option order, preserved original ten slots and additional fuel setting, local counter override without rewriting its saved preference, and manual OMP fallback.
 - Exact 49/50-tick confirmation, full LiHV packs with CRSF rounding, partly charged 3S packs, ratio tolerance, invalid ratios and values, stale or noncurrent samples, stopped RPM, candidate interruption, and backwards time.
 - Raw CRSF voltage and RPM metadata validation, calculated-name collisions, ambiguous raw sources, valid empty slots, source removal, and rediscovery. Missing or unqualified RPM cannot authorize an aircraft change after flight starts.
 - Retained identity during flight or temporary telemetry/link loss; ground class changes, warning/extrema/chemistry resets, timer qualification, theme edits, saved model changes, and explicit mode changes.

@@ -499,6 +499,7 @@ local OPT = {
   battBarMode   = 0,
   reservePct    = 0,
   battVoice     = false,
+  fuelCheckSeconds = 360,
   simTelemetry  = false,
   flightCounter = 2, -- FC.ROTORFLIGHT; FC is declared immediately below.
   rxPackMin     = 6.6,
@@ -666,6 +667,22 @@ G.applyOptionTheme = function(rawTheme)
   applyTheme(OPT.themeName)
 end
 -- END VARIANT option_theme.lua
+function G.addFuelOption(options)
+  -- EdgeTX 2.11 stores only ten widget settings; 2.12 increases this to 50.
+  -- Keep the older descriptor unchanged instead of relying on truncation.
+  if not getVersion then return end
+  local _, _, major, minor = getVersion()
+  if type(major) == "number" and type(minor) == "number"
+     and (major > 2 or (major == 2 and minor >= 12)) then
+    -- Build once with the descriptor; native settings handle wheel selection.
+    local durations = {"Off"}
+    for seconds = 15, 1800, 15 do
+      durations[#durations+1] = string.format("%02d:%02d",
+                                            math.floor(seconds / 60), seconds % 60)
+    end
+    options[#options+1] = {"FuelCheck", CHOICE, 25, durations} -- 06:00
+  end
+end
 local function applyOptions(opts)
   opts = opts or {}
   G.applyOptionTheme(tonumber(opts.Theme) or 0)
@@ -710,8 +727,17 @@ local function applyOptions(opts)
     if OPT.reservePct < 0 then OPT.reservePct = 0 end
     if OPT.reservePct > 50 then OPT.reservePct = 50 end
     OPT.battVoice   = (opts.BattVoice == 1 or opts.BattVoice == true)
-    -- CountSrc keeps slot 10 so the first nine persisted options remain in
-    -- place and the EdgeTX ten-option ceiling is respected.
+    local fuelSeconds = 360 -- fixed reminder on older ten-option firmware
+    if opts.FuelCheck ~= nil then
+      local choice = opts.FuelCheck
+      -- EdgeTX resets a saved slot when its type changes. Until reselected,
+      -- zero/invalid indices stay Off; do not reinterpret old duration text.
+      fuelSeconds = type(choice) == "number" and choice >= 1 and choice <= 121
+                    and choice <= math.floor(choice) and (choice - 1) * 15 or 0
+    end
+    if OPT.fuelCheckSeconds ~= fuelSeconds then A.fuelCheckArmed = nil end
+    OPT.fuelCheckSeconds = fuelSeconds
+    -- CountSrc retains its original slot and persisted type.
     local countMode = tonumber(opts.CountSrc or opts["Flight Counter"])
     if countMode ~= FC.RADIO
        and countMode ~= FC.ROTORFLIGHT then
@@ -891,8 +917,9 @@ function Storage.serialize(values)
   if #keys > Storage.maxEntries then return nil, "TOO MANY MODELS" end
   table.sort(keys)
   local parts = {"model_name,flight_count\n# api_ver=1\n"}
+  local format = string.format
   for _, key in ipairs(keys) do
-    parts[#parts+1] = string.format("%s,%d\n", key, values[key])
+    parts[#parts+1] = format("%s,%d\n", key, values[key])
   end
   local text = table.concat(parts)
   if #text > Storage.maxBytes then return nil, "HISTORY TOO LARGE" end
@@ -2139,6 +2166,32 @@ local function timerElapsedSeconds(timer)
   if elapsed < 0 then elapsed = 0 end
   return elapsed
 end
+function BATTERY_VOICE.checkFuel()
+  local threshold = OPT.fuelCheckSeconds
+  if threshold == 0 then return end
+  local secs = timerElapsedSeconds(getTimer0())
+  if secs == nil then return end
+  -- An already-expired timer on widget creation is not a new flight. Only an
+  -- observed reset/below-threshold value rearms this timer-owned latch; RF
+  -- reconnects, type changes and battery-alert resets must not rearm it.
+  if secs < threshold then
+    A.fuelCheckArmed = true
+  elseif A.fuelCheckArmed then
+    if OPT.autoHeliType and not AUTO_HELI.ready then return end
+    if OPT.heliType == HELI_NITRO then
+      if not A.linkAvailable then return end
+      A.fuelCheckArmed = false
+      if not BATTERY_VOICE.play(BATTERY_VOICE.path .. "fuel.wav") and playTone then
+        pcall(playTone, 1500, 200, 100, 0)
+        pcall(playTone, 2000, 200, 0, 0)
+      end
+      -- Queue a reminder without replacing more urgent battery feedback.
+      if playHaptic then pcall(playHaptic, 15, 0, 0) end
+    else
+      A.fuelCheckArmed = false
+    end
+  end
+end
 local function shiftFlightBatteryAlertTimers(delta)
   if not delta or delta <= 0 then return end
   if (A.battAlertNextTick or 0) > 0 then
@@ -2518,6 +2571,7 @@ local function serviceTelemetry(trackStats)
   end
   if not OPT.simTelemetry then tickFlightCount() end
   tick(now)
+  if not OPT.simTelemetry then BATTERY_VOICE.checkFuel() end
   if trackStats then updateStats() end
   return true
 end
@@ -5564,6 +5618,7 @@ local function backgroundOwned(widget)
   batteryProfiles.service(widget, false, nil, nil)
 end
 local function createOwned(zone, options)
+  A.fuelCheckArmed = nil
   OPT.autoHeliType = false
   OMP_AUTO.reset()
   AUTO_HELI.ready, AUTO_HELI.name = false, nil
@@ -5733,6 +5788,7 @@ local options = {
   { "CountSrc",  CHOICE, 2,
     { "KSE Counter", "RotorFlight" } },
 }
+G.addFuelOption(options)
 
 local OPTION_LABELS = {
   TxBatt="TX Battery",
@@ -5744,6 +5800,7 @@ local OPTION_LABELS = {
   RxPackMax="Rx Pack Maximum",
   MotorSw="Motor Switch",
   CountSrc="Flight Counter",
+  FuelCheck="Fuel Check Timer",
 }
 
 local function translate(name, language)
