@@ -28,7 +28,8 @@ def instrument(source):
     boundary = source.rfind("\nreturn {", 0, source.index(marker))
     if boundary < 0:
         raise ValueError("Cannot locate profile-controller return")
-    source = source[:boundary] + ("\nprofileSetEntryPrompt=function() end\n"
+    source = source[:boundary] + ("\nprofileSetEntryPrompt=function(w,visible,title,detail)\n"
+        "  w.auditPrompt=visible and {title=title,detail=detail} or nil\nend\n"
         "profileShowArmingBanner=function() end\n"
         "showBatteryProfileMenu=function() return false end\n") + source[boundary:]
     source = source.replace(marker, exports + marker)

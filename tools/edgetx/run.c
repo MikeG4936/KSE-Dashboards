@@ -61,7 +61,8 @@ int main(int argc, char **argv) {
   lua_pushrotable(L, LROT_TABLEREF(mathlib)); lua_setglobal(L, "math");
   lua_pushrotable(L, LROT_TABLEREF(tablib)); lua_setglobal(L, "table");
   lua_pushrotable(L, LROT_TABLEREF(strlib)); lua_setglobal(L, "string");
-  luaopen_string(L); /* Installs the string metatable. */
+  /* Firmware leaves LUA_ENABLE_STRLIB_MT disabled: use string.fn(value),
+     not value:fn(). Installing that optional metatable masks radio crashes. */
   lua_settop(L, 0);
   lua_pushcfunction(L, host_print); lua_setglobal(L, "print");
   lua_pushcfunction(L, host_measure); lua_setglobal(L, "measure");

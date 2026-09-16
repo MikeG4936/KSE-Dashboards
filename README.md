@@ -260,7 +260,7 @@ The first five names are required. In manual **OMPHOBBY** mode, include **M1** o
 | Do I need a visible RF Tool widget or `rf2bg`? | No. Install the complete RF Tool package for Rotorflight models, but you do not need it on a telemetry screen. Disable any `rf2bg` special/global function. |
 | `INSTALL RF TOOL` or no RF connection | Check that RfTool, RfStats and `/SCRIPTS/RF2/` came from the same compatible 2.3 package; check the FC connection and firmware. |
 | `--`, `NO DATA` or missing sensors | Connect the helicopter, open KSE once, then discover sensors and check their names. See [telemetry setup](#4-configure-and-discover-telemetry) if readings are missing. |
-| `NO ARM SENSOR`, even though the arm switch works | `ARM` is a reading sent by the helicopter, not your physical arm switch. Follow [telemetry setup](#4-configure-and-discover-telemetry) and discover `ARM`; selecting Motor Switch does not replace it. |
+| `NO ARM SENSOR` or `WAITING FOR ARM TELEMETRY` | KSE needs an updating `ARM` reading from the helicopter. Wait briefly after connecting; if the message remains, follow [telemetry setup](#4-configure-and-discover-telemetry) and check that `ARM` is discovered and updating. Your physical arm switch and the Motor Switch setting do not replace this reading. |
 | Battery profiles do not open | Use Electric mode, connect and disarm the helicopter, and check that `ARM` is updating. Set a capacity above zero for each battery profile in Rotorflight. |
 | `UPDATE EDGETX FOR PROFILE PICKER` | Update EdgeTX to a version supported by your radio and the installed RF Tool package. |
 | The dashboard clock does not run | Configure **EdgeTX Timer 1** to run from your motor switch, even if you use Rotorflight FC counting. |
@@ -269,6 +269,7 @@ The first five names are required. In manual **OMPHOBBY** mode, include **M1** o
 | KSE count does not advance | Set Timer 1 to run with the motor switch. Let it run for the chosen minimum time and reset it between flights. OMP always uses this counter. |
 | Battery percentage is missing or looks wrong | For Electric Rotorflight models, first check the battery readings and settings on Configurator’s **Power** tab; see [battery and SmartFuel setup](https://rotorflight.org/docs/configurator/tabs/power). If those look correct, check the radio’s sensors and KSE’s **Battery Reserve %**, which changes the displayed percentage. For OMP, check the [OMP sensor list and model name](#omphobby-telemetry). |
 | Can I display temperature in Fahrenheit? | Fahrenheit is not currently supported. Keep `Tesc` (Rotorflight) or `Temp` (OMP, if used) set to Celsius. |
+| Battery-profile popup appears on a Nitro helicopter | Check **Heli Type**: select Nitro, or Auto Elec/Nitro with an FC name ending in `N` or `Nitro`. Electric mode enables battery profiles. |
 | Nitro battery is missing | Check `Vbec` and receiver-pack voltage settings; Nitro does not use battery profiles. |
 | `Profile / Rate` is missing | Discover both `PID#` and `RTE#`; the indicator needs a live link and valid values for both. |
 | Model image is missing | Check the filename, capitalization, dimensions and file size against [Model images](#model-images). Auto Elec/Nitro uses the confirmed FC name. |

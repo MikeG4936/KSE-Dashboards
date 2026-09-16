@@ -180,6 +180,61 @@ end
 a,w,q=setup(); env.samples[77].value=254
  eq("other ARM bits do not change disarmed bit",disarmed(a,w),true)
 
+-- The locked prompt must explain the current blocker, not an old read failure.
+-- Use actual controller cancellation/recovery with the pinned upstream queue.
+for _,knownProfile in ipairs({false,true}) do
+  a,w,q=setup(1,2,true)
+  w.profileAutoShown=false
+  w.profileInitialReadValid=knownProfile
+  w.profileActive=knownProfile and 1 or nil
+  assert(a.profiles.snapshot(w))
+  env.samples[77].fresh=false
+  service(a,w,nil,true)
+  local label="interrupted snapshot known="..tostring(knownProfile)
+  eq(label.." shows locked title",w.auditPrompt.title,"BATTERY PROFILE LOCKED")
+  eq(label.." explains stale ARM",w.auditPrompt.detail,"WAITING FOR ARM TELEMETRY")
+  eq(label.." discards operation",w.profileOperation,nil)
+  eq(label.." admits no new request",#q.messageQueue,0)
+  env.samples[77].fresh=true; env.samples[77].value=1
+  service(a,w,nil,true)
+  eq(label.." updates blocker after arming",w.auditPrompt.detail,"DISARM TO CHANGE PROFILE")
+  eq(label.." remains blocked while armed",#q.messageQueue,0)
+  env.samples[77].value=0
+  service(a,w,nil,true)
+  eq(label.." automatically retries after recovery",w.profileOperation.kind,"snapshot")
+  eq(label.." resumes reading message",w.auditPrompt.detail,"READING BATTERY PROFILE DATA...")
+  eq(label.." queues only snapshot reads",#q.messageQueue,2)
+end
+
+a,w,q=setup(1,2,true)
+w.profileAutoShown=false; w.profileInitialReadFinished=false
+w.profileCapacityReadFinished=false; w.profileInitialReadRequested=false
+w.profileCapacityReadRequested=false; w.profileMessage="SELECT A BATTERY PROFILE"
+env.ids.ARM=nil
+service(a,w,nil,true)
+eq("initial missing ARM explains lock",w.auditPrompt.detail,"WAITING FOR ARM TELEMETRY")
+eq("initial missing ARM sends nothing",#q.messageQueue,0)
+
+for _,interruption in ipairs({"stale ARM","armed ARM","context changed"}) do
+  a,w,q=setup(1,2,true)
+  assert(a.profiles.begin(w,"select",2))
+  local expected="REQUEST PAUSED - CHECK PROFILE"
+  if interruption=="stale ARM" then
+    env.samples[77].fresh=false; expected="WAITING FOR ARM TELEMETRY"
+  elseif interruption=="armed ARM" then
+    env.samples[77].value=1; expected="DISARM TO CHANGE PROFILE"
+  else
+    -- An observed interruption invalidates the old context even if ARM has
+    -- recovered by the next service. Do not invent a current arming blocker.
+    env.samples[77].fresh=false; assert(not disarmed(a,w))
+    env.samples[77].fresh=true
+  end
+  service(a,w,nil,true)
+  eq(interruption.." selection notice explains interruption",w.auditPrompt.detail,expected)
+  eq(interruption.." selection is not automatically repeated",w.profileOperation,nil)
+  eq(interruption.." queues no selection continuation",#q.messageQueue,0)
+end
+
 local unrelatedSensors={
  {"missing Gov and Hspd",function() env.ids.Gov=nil; env.ids.Hspd=nil end},
  {"stale Gov and Hspd",function()
