@@ -25,6 +25,13 @@
 /tools/*
 !/tools/assemble.py
 !/tools/edgetx/
+!/tools/images/
+/tools/images/*
+!/tools/images/resize_kse_images.py
+!/tools/images/Resize KSE Images.command
+!/tools/images/Resize KSE Images.bat
+!/tools/images/README.md
+!/tools/images/KSE Image Resizer.html
 /tools/edgetx/*
 !/tools/edgetx/*.py
 !/tools/edgetx/*.c
