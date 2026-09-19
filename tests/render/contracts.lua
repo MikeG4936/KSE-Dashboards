@@ -42,6 +42,31 @@ for mode=1,3 do
     api.background(widget)
   end
 end
+-- Inspect the real retained transmitter icon via test-only source exports.
+-- Native color must be independent of KSE's theme, and zero must hide both.
+for _,theme in ipairs({1,2}) do
+  opts.Theme=theme;api.update(widget,opts)
+  for _,case in ipairs({{6.2,0,nil},{6.6,LCD_W==800 and 5/28 or 4/20,0xF44336},
+                        {7.4,LCD_W==800 and 15/28 or 11/20,0xFFC107},
+                        {7.5,LCD_W==800 and 17/28 or 12/20,0x4CAF50},
+                        {8.4,1,0x4CAF50},{0,0,nil}}) do
+    __mock.values["tx-voltage"]={value=case[1]}
+    __mock.now=__mock.now+100
+    api.refresh(widget,nil,nil)
+    local ui=__txTestUi(widget)
+    if case[2]<=0 then
+      assert(ui.txFill.hidden==true,"empty/unavailable transmitter fill remains visible")
+    else
+      local inset=ui.txInsetY or ui.txInset
+      local expected=math.max(1,math.floor((ui.txBodyH-2*inset)*case[2]+0.5))
+      assert(not ui.txFill.hidden,"live transmitter fill hidden")
+      assert(ui.txFill.properties.h==expected,"transmitter depletion differs from native fraction")
+      assert(ui.txFill.properties.color==case[3],"transmitter color differs from native default")
+      assert(ui.txFill.properties.y+expected==ui.txBodyY+ui.txBodyH-inset,
+             "transmitter fill must stay anchored to bottom")
+    end
+  end
+end
 -- ARM/profile packet transport is tested separately; this fixture never creates RF Tool.
 print("66 mode/theme renders; warm refresh="..maxRefresh.." instructions (LVGL mocked)")
 assert(maxRefresh<15000,"warm refresh exceeds project instruction margin")

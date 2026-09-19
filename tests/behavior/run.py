@@ -10,7 +10,7 @@ ROOT = Path(__file__).resolve().parents[2]
 HERE = Path(__file__).resolve().parent
 SENSORS = """activeSensorName getSensorNumber resolveNamed getCellCount getPackVolt
 getCellVoltage getBatPct getCapa getCurr getTemp getBec getRxBatt getBattProfile
-getHeadspeed getTailRpm getGovernorMode getGovState getTxVolt txPctFromVolts
+getHeadspeed getTailRpm getGovernorMode getGovState getTxVolt txBatteryState
 signalPercent getRqly percentFromCellVoltage selectFlightBatteryPercent
 calculateAdjustedPercent profileIndexValid profilePair flightStatusPending""".split()
 FUNCTIONS = """clearFrameCache applyOptions tick resetSessionEvidence
@@ -27,7 +27,7 @@ def instrument(source: str, variant: str) -> str:
     namespace = "sensors." if "local sensors = {}" in source else ""
     exports = [f"{name}={namespace}{name}" for name in SENSORS]
     exports += [f"{name}={name}" for name in FUNCTIONS]
-    exports += ["D=D", "A=A", "OPT=OPT", "S=S", "FC=FC", "voice=BATTERY_VOICE",
+    exports += ["D=D", "A=A", "OPT=OPT", "S=S", "FC=FC", "voice=BATTERY_VOICE", "geometry=G",
                 "options=options", "config=function() return minFlightDur, SRC.motorSwitch end",
                 "theme=function() return C_BG, C_ACCENT, OPT.bgTransparent end"]
     return (HERE.joinpath("mock.lua").read_text() + "\n" + source[:marker]

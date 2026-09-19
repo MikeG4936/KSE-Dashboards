@@ -16,11 +16,19 @@ def main():
     args = parser.parse_args()
     with tempfile.TemporaryDirectory(prefix='kse-render-') as temp:
         for variant in ('KSE4', 'KSE5'):
+            source = (ROOT/variant/'main.lua').read_text()
+            marker = source.rfind('\nreturn {')
+            assert marker >= 0 and 'useLvgl' in source[marker:]
+            ui = 'V' if variant == 'KSE4' else 'w.ui'
+            dashboard = Path(temp) / f'{variant}.lua'
+            dashboard.write_text(source[:marker]
+                + f'\n__txTestUi=function(w) return {ui}, G end\n'
+                + source[marker:])
             for width, height in ((800,480),(480,320),(480,272)):
                 path = Path(temp) / 'run.lua'
                 path.write_text((ROOT/'tests/behavior/mock.lua').read_text() + '\n'
                     + f'LCD_W={width};LCD_H={height}\n'
-                    + 'dashboardPath=' + json.dumps(str(ROOT/variant/'main.lua')) + '\n'
+                    + 'dashboardPath=' + json.dumps(str(dashboard)) + '\n'
                     + HERE.joinpath('contracts.lua').read_text())
                 result = subprocess.run([str(args.runner.resolve()),str(path)], capture_output=True,text=True,timeout=60)
                 if result.returncode:

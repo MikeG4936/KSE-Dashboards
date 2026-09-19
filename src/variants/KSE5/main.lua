@@ -18,6 +18,8 @@ local G = {
   compact=false, largeScreen=true,
 }
 G.name = "KSE5"
+-- Native EdgeTX Radio Info defaults, independent of dashboard theme.
+G.txBatteryColors = {lcd.RGB(244,67,54), lcd.RGB(255,193,7), lcd.RGB(76,175,80)}
 G.assetRoot = "/WIDGETS/KSE5"
 local SMLSIZE      = rawget(_G, "SMLSIZE")      or SMLSIZE      or 0
 local MIDSIZE      = rawget(_G, "MIDSIZE")      or MIDSIZE      or 0
@@ -667,13 +669,6 @@ local function batteryColor(percent)
   return C_RED
 end
 
-local function txBatteryColor(percent)
-  local p = math.floor((tonumber(percent) or 0) + 0.5)
-  if p >= 51 then return C_GREEN end
-  if p >= 31 then return C_YELLOW end
-  return C_RED
-end
-
 local function becValueColor(volts)
   local v = tonumber(volts)
   if not v then return C_DIM end
@@ -712,14 +707,14 @@ local function updateTopBar(wgt)
     profilesReady and string.format("Profile %d / Rate %d",
       pidProfile, rateProfile) or "", C_TEXT)
 
-  local txPct = sensors.txPctFromVolts(sensors.getTxVolt(), txIsLiIon)
-  if txPct then
+  local txFill, txBand = sensors.txBatteryState()
+  if txFill and txFill > 0 then
     local innerH = ui.txBodyH - ui.txInset * 2
-    local fillH = math.max(1, math.floor(innerH * clamp(txPct, 0, 100) / 100))
+    local fillH = math.max(1, math.floor(innerH * txFill + 0.5))
     setObject(wgt, ui.txFill, {
       y=ui.txBodyY + ui.txBodyH - ui.txInset - fillH,
       w=ui.txBodyW - ui.txInset * 2,
-      h=fillH, color=txBatteryColor(txPct),
+      h=fillH, color=G.txBatteryColors[txBand],
     })
     setVisible(wgt, ui.txFill, true)
   else
@@ -993,6 +988,8 @@ local options = {
       "Ember", "Graphite", "Glacier", "Sunset", "Synthwave", "Gulf",
       "Voltage", "Titanium Ember", "Aurora", "Desert Night",
     } },
+  -- Candidate for a future feature: keep slot 2 until an explicit migration
+  -- can retire fallback use and safely interpret existing saved values 1/2.
   { "TxBatt",    CHOICE, 1, { "LiPo", "Li-Ion" } },
   { "MinFlight", VALUE, TOPBAR_MIN_DUR_DEFAULT, -30, 120 },
   { "HeliType",  CHOICE, 1, { "Electric", "Nitro", "OMPHOBBY", "Auto Elec/Nitro", "OMP Auto" } },
@@ -1010,7 +1007,7 @@ local options = {
 G.addFuelOption(options)
 
 local OPTION_LABELS = {
-  TxBatt="TX Battery",
+  TxBatt="TX Batt Fallback",
   MinFlight="KSE Counter Min (sec)",
   HeliType="Heli Type",
   BattRsv="Battery Reserve %",

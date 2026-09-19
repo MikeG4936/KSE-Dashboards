@@ -98,6 +98,8 @@ local G = {
   screen480x320=false, screen480x272=false, screen800x480=false,
 }
 G.name = "KSE4"
+-- Native EdgeTX Radio Info defaults, independent of dashboard theme.
+G.txBatteryColors = {lcd.RGB(244,67,54), lcd.RGB(255,193,7), lcd.RGB(76,175,80)}
 G.assetRoot = "/WIDGETS/KSE4"
 local SMLSIZE      = rawget(_G, "SMLSIZE")      or SMLSIZE      or 0
 local MIDSIZE      = rawget(_G, "MIDSIZE")      or MIDSIZE      or 0
@@ -1338,21 +1340,41 @@ function sensors.getTxVolt()
   F.txVolt = v
   return v
 end
--- TX battery display endpoints for a 2S pack. Keep these separate from the
--- model battery settings: the top-bar gauge represents the radio battery.
-local TX_LIPO_EMPTY_V = 7.0   -- 3.50 V/cell
-local TX_LIPO_FULL_V  = 8.4   -- 4.20 V/cell
-local TX_LIION_EMPTY_V = 6.2  -- 3.10 V/cell
-local TX_LIION_FULL_V  = 8.4  -- 4.20 V/cell
-
-function sensors.txPctFromVolts(volts, isLiIon)
-  if not volts or volts <= 0 then return nil end
-  local emptyV = isLiIon and TX_LIION_EMPTY_V or TX_LIPO_EMPTY_V
-  local fullV = isLiIon and TX_LIION_FULL_V or TX_LIPO_FULL_V
-  local pct = ((volts - emptyV) / (fullV - emptyV)) * 100
-  if pct < 0 then pct = 0 end
-  if pct > 100 then pct = 100 end
-  return pct
+-- EdgeTX v2.12.4 Radio Info: GET_TXBATT_BARS, then color from rounded pixels.
+-- See docs/edgetx-2.12.4-battery-icon-comparison.md for commit-pinned sources.
+-- Cache only the two range values for one second, not the entire API table.
+function sensors.txBatteryState()
+  local now = frameNow()
+  if not sensors.txRangeAt or now < sensors.txRangeAt
+     or now - sensors.txRangeAt >= 100 then
+    sensors.txRangeAt = now
+    sensors.txMin, sensors.txMax = nil, nil
+    if type(getGeneralSettings) == "function" then
+      local ok, settings = pcall(getGeneralSettings)
+      if ok and type(settings) == "table" then
+        local low, high = settings.battMin, settings.battMax
+        if type(low) == "number" and type(high) == "number"
+           and low > 0 and high > low and high <= 25.5 then
+          low, high = math.floor(low * 10 + 0.5), math.floor(high * 10 + 0.5)
+          if high > low then sensors.txMin, sensors.txMax = low, high end
+        end
+      end
+    end
+  end
+  local volts = sensors.getTxVolt()
+  if not (volts > 0 and volts <= 20) then return nil end
+  -- Retain saved slot 2 as a compatibility fallback; the radio range wins.
+  local low = sensors.txMin or (txIsLiIon and 62 or 70)
+  local high = sensors.txMax or 84
+  -- Use the physical display, not the widget zone, for native layout scaling.
+  local width, green, amber = 20, 12, 5
+  if G.screenW == 800 then width, green, amber = 28, 17, 7 end
+  -- Reconstruct firmware's integer tenths to avoid Lua float boundary drift.
+  local voltage = math.floor(volts * 10 + 0.5)
+  local bars = math.floor((width * math.max(0, voltage - low)
+                          + math.floor((high - low) / 2)) / (high - low))
+  bars = math.min(width, bars)
+  return bars / width, bars >= green and 3 or bars >= amber and 2 or 1
 end
 function sensors.signalPercent(raw)
   local v = tonumber(raw)
@@ -2641,14 +2663,6 @@ local function batColor(pct)
   if pct >= 20 then return C_YELLOW end
   return C_RED
 end
-local function txBatColor(pct)
-  -- Classify the estimated whole percentage so floating-point rounding at the
-  -- voltage boundaries cannot turn an exact 50% green or an exact 30% yellow.
-  local wholePct = math.floor((pct or 0) + 0.5)
-  if wholePct >= 51 then return C_GREEN end
-  if wholePct >= 31 then return C_YELLOW end
-  return C_RED
-end
 local function cellVoltageColor(sessionMin)
   if sessionMin and sessionMin <= SAFETY.cellRedThreshold then return C_RED end
   return C_TEXT
@@ -3148,14 +3162,14 @@ local function updateUiState()
     profilesReady and string.format("Profile %d / Rate %d",
       pidProfile, rateProfile) or "", C_TEXT)
 
-  local txPct = sensors.txPctFromVolts(sensors.getTxVolt(), txIsLiIon)
-  if txPct then
-    local fillH = math.floor((V.txBodyH - V.txInsetY * 2) * txPct / 100)
+  local txFill, txBand = sensors.txBatteryState()
+  if txFill and txFill > 0 then
+    local fillH = math.max(1, math.floor((V.txBodyH - V.txInsetY * 2) * txFill + 0.5))
     local fillY = V.txBodyY + V.txBodyH - V.txInsetY - fillH
     setObject(V.txFill, { y=fillY,
                           w=math.max(1, V.txBodyW - V.txInsetX * 2),
                           h=math.max(1, fillH),
-                          color=txBatColor(txPct) })
+                          color=G.txBatteryColors[txBand] })
     setVisible(V.txFill, fillH > 0)
   else
     setVisible(V.txFill, false)
@@ -5790,6 +5804,8 @@ local options = {
                              "Graphite", "Glacier", "Sunset", "Synthwave",
                              "Gulf", "Voltage", "Transparent Light",
                              "Titanium Ember", "Aurora", "Desert Night" } },
+  -- Candidate for a future feature: keep slot 2 until an explicit migration
+  -- can retire fallback use and safely interpret existing saved values 1/2.
   { "TxBatt",   CHOICE, 1, { "LiPo", "Li-Ion" } },
   { "MinFlight", VALUE, TOPBAR_MIN_DUR_DEFAULT, -30, 120 },
   { "HeliType", CHOICE, 1, { "Electric", "Nitro", "OMPHOBBY", "Auto Elec/Nitro", "OMP Auto" } },
@@ -5805,7 +5821,7 @@ local options = {
 }
 G.addFuelOption(options)
 local OPTION_LABELS = {
-  TxBatt   = "TX Battery",
+  TxBatt   = "TX Batt Fallback",
   MinFlight= "KSE Counter Min (sec)",
   HeliType = "Heli Type",
   BattRsv  = "Batt Reserve %",

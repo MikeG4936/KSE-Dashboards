@@ -81,9 +81,71 @@ __runContracts=function()
   check("zero profile rejected",t.getBattProfile(),nil)
   source("tx-voltage",8000)
   check("transmitter millivolts",t.getTxVolt(),8)
-  check("LiPo empty",t.txPctFromVolts(7,false),0)
-  check("LiIon empty",t.txPctFromVolts(6.2,true),0)
-  check("transmitter full",t.txPctFromVolts(8.4,true),100)
+  -- Exact native Radio Info outcomes, including its integer pixel rounding.
+  -- Same range + 7.4 V was formerly green in KSE, amber in native EdgeTX.
+  for _,width in ipairs({480,800}) do
+    t.geometry.screenW=width
+    local cases=width==480 and {
+      {6.1,0,1},{6.2,0,1},{6.6,4/20,1},{6.7,5/20,2},
+      {6.8,5/20,2},{7.4,11/20,2},{7.5,12/20,3},{8.4,1,3},{8.5,1,3}
+    } or {
+      {6.1,0,1},{6.2,0,1},{6.6,5/28,1},{6.7,6/28,1},
+      {6.8,8/28,2},{7.4,15/28,2},{7.5,17/28,3},{8.4,1,3},{8.5,1,3}
+    }
+    for _,case in ipairs(cases) do
+      source("tx-voltage",case[1])
+      local fill,band=t.txBatteryState()
+      check("TX fill "..width.." "..case[1],fill,case[2])
+      check("TX band "..width.." "..case[1],band,case[3])
+    end
+  end
+  source("tx-voltage",7.4)
+  t.applyOptions({TxBatt=1})
+  check("native range overrides LiPo",t.txBatteryState(),15/28)
+  t.applyOptions({TxBatt=2})
+  check("native range overrides LiIon",t.txBatteryState(),15/28)
+  local calls=m.generalCalls
+  frame(m.now+99);t.txBatteryState()
+  check("TX range cache bounded allocation",m.generalCalls,calls)
+  m.generalSettings={battMin=7,battMax=8.4,battWarn=8.3}
+  frame(m.now+1)
+  local fill,band=t.txBatteryState()
+  check("TX edited radio range",fill,8/28)
+  check("TX warning voltage independent",band,2)
+  m.generalSettings={battMin=6.2,battMax=8.4}
+  frame(0)
+  check("TX range refresh on clock rollback",t.txBatteryState(),15/28)
+  -- Native half-pixel ties round up, including Lua's float voltage source.
+  m.generalSettings={battMin=6,battMax=10}
+  t.geometry.screenW=480
+  source("tx-voltage",6.1)
+  check("TX half-pixel rounds up",t.txBatteryState(),1/20)
+  t.geometry.screenW=800
+  local settingsApi=getGeneralSettings
+  local invalidSettings={false,{}, {battMin=8,battMax=8}, {battMin=9,battMax=8},
+    {battMin="6.2",battMax=8.4},{battMin=0/0,battMax=8.4},
+    {battMin=6.2,battMax=math.huge}, {battMin=6.21,battMax=6.22}}
+  for i,settings in ipairs(invalidSettings) do
+    getGeneralSettings=function() return settings end
+    t.applyOptions({TxBatt=1});source("tx-voltage",7)
+    check("TX invalid range LiPo fallback "..i,t.txBatteryState(),0)
+    t.applyOptions({TxBatt=2})
+    check("TX invalid range LiIon fallback "..i,t.txBatteryState(),10/28)
+  end
+  getGeneralSettings=function() error("unavailable") end
+  source("tx-voltage",6.2)
+  check("TX throwing API fallback",t.txBatteryState(),0)
+  getGeneralSettings=nil
+  source("tx-voltage",8.4)
+  check("TX absent API fallback",t.txBatteryState(),1)
+  getGeneralSettings=settingsApi;m.generalSettings=nil
+  source("tx-voltage",0)
+  check("TX zero source has no fill",t.txBatteryState(),nil)
+  source("tx-voltage",7.4,false)
+  check("TX noncurrent source has no fill",t.txBatteryState(),nil)
+  source("tx-voltage",0/0)
+  check("TX NaN source has no fill",t.txBatteryState(),nil)
+  reset()
   check("RSSI conversion",t.signalPercent(-80),50)
 
   -- Assert selector authority independently of UI smoothing and source cache.

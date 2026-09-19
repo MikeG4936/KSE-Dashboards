@@ -40,6 +40,10 @@ The findings below describe the dated audit baseline. Current behavior is define
 
 Original measurements and line references remain historical evidence. Re-run compiler/resource tooling for current values. The final transmitter-validation slice remains open; software contracts do not establish native LVGL memory, radio scheduling, SD durability or RF latency.
 
+## Transmitter-battery icon alignment
+
+The transmitter-battery icon follows the separate [EdgeTX 2.12.4 alignment contract](edgetx-2.12.4-battery-icon-comparison.md#implementation-contract): shared radio range, native integer fill rounding and color bands for the physical screen, native default RGB colors, and hidden fill at zero. Saved `TxBatt` remains slot 2 as a fallback and future replacement candidate requiring explicit migration; the original option preservation contract still applies. [Behavior](../tests/behavior/README.md) and [render](../tests/render/README.md) fixtures cover this boundary; physical-radio appearance and timing remain separate validation.
+
 ## Saved-model ownership handoff
 
 EdgeTX retains widget Lua state while replacing the widgets for a newly selected model. A global KSE owner can therefore outlive its actual screen. Use the saved model filename and an observed model generation captured at widget creation to distinguish this retired owner from a duplicate on the same model. Retire pending owned work on the first observed known filename change, including observations from old callbacks; preserve active RF Tool transactions, foreign queue work and shared dirty counts. Only a current-model foreground refresh may replace the owner, skipping the 500-tick lease when a known model-session change proves the old widget obsolete. Same-model recreation and missing filename evidence keep the lease fallback. Unknown filename samples do not reset the generation. Callbacks from a retired observed model session cannot renew the lease, admit MSP, clear the replacement screen or revive after an observed A→B→A sequence.

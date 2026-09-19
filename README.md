@@ -47,11 +47,10 @@ Add **KSE4 or KSE5** to a full-screen telemetry page. Configure **only one KSE w
 Open the widget settings and select:
 
 - **Heli Type:** Electric, Nitro or OMPHOBBY to match your helicopter, or [OMP Auto](#one-radio-model-for-omp-m1-and-m2) for a shared M1/M2 model.
-- **TX Battery:** LiPo or Li-Ion to match the battery in your radio.
 - **Motor Switch:** the whole physical switch, such as `SG`, not an individual switch position or output channel.
 - **Flight Counter:** your preferred counter; complete its setup in step 5.
 
-Set battery reserve and voice as desired. For Nitro, set the receiver-pack voltage limits. See [Settings](#settings) for the available options.
+The transmitter battery icon automatically uses the radio's EdgeTX **Battery range**. Set battery reserve and voice as desired. For Nitro, set the receiver-pack voltage limits. See [Settings](#settings) for the available options.
 
 ### 4. Configure and discover telemetry
 
@@ -108,7 +107,7 @@ Both dashboards have the same settings. Their colors and a few setting names dif
 | Setting | Default | What it controls |
 | --- | --- | --- |
 | **Theme** | Dark | Dashboard colors. Each has 22 choices; use the [theme gallery](theme-gallery/README.md) to compare them. KSE4 includes transparent themes; KSE5 uses solid backgrounds. |
-| **TX Battery** | LiPo | Select 2S LiPo or 2S Li-Ion to match the battery in your radio. |
+| **TX Batt Fallback** | LiPo | Used only if EdgeTX cannot supply a valid radio battery range: 2S LiPo uses 7.0–8.4 V; 2S Li-Ion uses 6.2–8.4 V. Normally leave this alone. The saved slot is retained to preserve your other settings. |
 | **KSE Counter Min (sec)** | 20 | How long Timer 1 must run before KSE counts a flight. Applies only to KSE Counter. |
 | **Heli Type** | Electric | Electric, Nitro or OMPHOBBY; [Auto Elec/Nitro](#auto-helicopter-type) for Rotorflight name-based selection; [OMP Auto](#one-radio-model-for-omp-m1-and-m2) for automatic M1/M2 selection. |
 | **Batt Reserve %** / **Battery Reserve %** | 20 | Battery reserve for Electric/OMP: with 20% reserve, the dashboard shows 0% when 20% remains. Range 0–50%; does not affect Nitro. |
@@ -122,6 +121,8 @@ Both dashboards have the same settings. Their colors and a few setting names dif
 ## Using the features
 
 ### Battery readings and warnings
+
+The small transmitter battery icon follows EdgeTX 2.12.4's native **Radio Info** battery range, rounded fill levels and color transitions for your screen size. It keeps KSE's vertical shape and uses the native default green/amber/red shades in every theme. Changes to the radio battery range are picked up within one second of active dashboard refresh. Custom colors selected in a separate Radio Info widget are not copied. The radio's low-battery alarm remains independent of icon color.
 
 In Electric and OMP modes, **Battery Reserve %** sets aside part of the pack: with a 20% reserve, the dashboard shows 0% when the helicopter reports 20% remaining. Rotorflight Smart Fuel is supported. If battery percentage is unavailable, KSE estimates it from voltage when possible.
 

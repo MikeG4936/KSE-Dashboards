@@ -20,6 +20,7 @@
 !/docs/telemetry-configuration-audit.md
 !/docs/omp-auto-identification-feasibility.md
 !/docs/image-resource-limits.md
+!/docs/edgetx-2.12.4-battery-icon-comparison.md
 
 # Host-side compatibility tooling and fixtures; never copy these to the radio.
 /tools/*

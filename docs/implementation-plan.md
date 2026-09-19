@@ -56,6 +56,10 @@ Use review subagents for substantive RF/safety changes and shared-engine extract
 
 For the OMP Auto extension, use the [OMP identity contract](omp-auto-identification-feasibility.md#omp-auto-implementation-contract) and [OMP lifecycle fixtures](../tests/omp_auto/README.md) alongside slices 5–6. Preserve manual modes and Rotorflight Auto, validate identity before counting/layout, and retain the standalone-folder and original-option preservation contracts. Require existing behavior/Auto/MSP/ownership/render checks, both EdgeTX compiler/resource comparisons, independent compatibility review, and separate transmitter validation of both helicopters and reconnects.
 
+## Transmitter-battery alignment extension
+
+Follow the [EdgeTX 2.12.4 battery contract](edgetx-2.12.4-battery-icon-comparison.md#implementation-contract) for shared range, integer rounding, color bands and empty fill. Preserve all saved option slots; `TxBatt` remains a fallback and candidate for a later explicitly migrated feature. Validate behavior/parity and retained rendering at all three dimensions, unchanged Auto/OMP option contracts, both compiler/resource gates, and independent EdgeTX compatibility review. Keep comparison against native screens on an actual transmitter as a separate slice-6 checkpoint.
+
 ## Slice handoff
 
 The Nitro fuel reminder extension follows the [fuel reminder contract](KSE4-KSE5-optimization-review.md#nitro-fuel-reminder-contract) and [Auto lifecycle fixtures](../tests/auto_type/README.md). Preserve Timer 1 configuration and the original ten saved settings; append the fuel setting only on firmware with verified capacity; require existing behavior/MSP/ownership/storage/render and compiler/resource gates, independent compatibility review, and separate transmitter audio/haptic checks.

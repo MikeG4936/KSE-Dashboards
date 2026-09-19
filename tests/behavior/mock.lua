@@ -9,6 +9,10 @@ LCD_W=800; LCD_H=480
 lcd={RGB=function(r,g,b) return r*65536+g*256+b end}
 getTime=function() return __mock.now end
 getVersion=function() return "2.12.4", "tx16s", 2, 12, 4, "EdgeTX" end
+getGeneralSettings=function()
+  __mock.generalCalls=(__mock.generalCalls or 0)+1
+  return __mock.generalSettings or {battMin=6.2,battMax=8.4,battWarn=6.6}
+end
 getFieldInfo=function(name)
   __mock.fieldCalls[name]=(__mock.fieldCalls[name] or 0)+1
   if name == "SG" or name == 99 then return {id=99,name="SG",desc="Switch G"} end

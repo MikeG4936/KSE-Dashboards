@@ -335,21 +335,41 @@ function sensors.getTxVolt()
   F.txVolt = v
   return v
 end
--- TX battery display endpoints for a 2S pack. Keep these separate from the
--- model battery settings: the top-bar gauge represents the radio battery.
-local TX_LIPO_EMPTY_V = 7.0   -- 3.50 V/cell
-local TX_LIPO_FULL_V  = 8.4   -- 4.20 V/cell
-local TX_LIION_EMPTY_V = 6.2  -- 3.10 V/cell
-local TX_LIION_FULL_V  = 8.4  -- 4.20 V/cell
-
-function sensors.txPctFromVolts(volts, isLiIon)
-  if not volts or volts <= 0 then return nil end
-  local emptyV = isLiIon and TX_LIION_EMPTY_V or TX_LIPO_EMPTY_V
-  local fullV = isLiIon and TX_LIION_FULL_V or TX_LIPO_FULL_V
-  local pct = ((volts - emptyV) / (fullV - emptyV)) * 100
-  if pct < 0 then pct = 0 end
-  if pct > 100 then pct = 100 end
-  return pct
+-- EdgeTX v2.12.4 Radio Info: GET_TXBATT_BARS, then color from rounded pixels.
+-- See docs/edgetx-2.12.4-battery-icon-comparison.md for commit-pinned sources.
+-- Cache only the two range values for one second, not the entire API table.
+function sensors.txBatteryState()
+  local now = frameNow()
+  if not sensors.txRangeAt or now < sensors.txRangeAt
+     or now - sensors.txRangeAt >= 100 then
+    sensors.txRangeAt = now
+    sensors.txMin, sensors.txMax = nil, nil
+    if type(getGeneralSettings) == "function" then
+      local ok, settings = pcall(getGeneralSettings)
+      if ok and type(settings) == "table" then
+        local low, high = settings.battMin, settings.battMax
+        if type(low) == "number" and type(high) == "number"
+           and low > 0 and high > low and high <= 25.5 then
+          low, high = math.floor(low * 10 + 0.5), math.floor(high * 10 + 0.5)
+          if high > low then sensors.txMin, sensors.txMax = low, high end
+        end
+      end
+    end
+  end
+  local volts = sensors.getTxVolt()
+  if not (volts > 0 and volts <= 20) then return nil end
+  -- Retain saved slot 2 as a compatibility fallback; the radio range wins.
+  local low = sensors.txMin or (txIsLiIon and 62 or 70)
+  local high = sensors.txMax or 84
+  -- Use the physical display, not the widget zone, for native layout scaling.
+  local width, green, amber = 20, 12, 5
+  if G.screenW == 800 then width, green, amber = 28, 17, 7 end
+  -- Reconstruct firmware's integer tenths to avoid Lua float boundary drift.
+  local voltage = math.floor(volts * 10 + 0.5)
+  local bars = math.floor((width * math.max(0, voltage - low)
+                          + math.floor((high - low) / 2)) / (high - low))
+  bars = math.min(width, bars)
+  return bars / width, bars >= green and 3 or bars >= amber and 2 or 1
 end
 function sensors.signalPercent(raw)
   local v = tonumber(raw)

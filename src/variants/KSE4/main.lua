@@ -7,6 +7,8 @@ local G = {
   screen480x320=false, screen480x272=false, screen800x480=false,
 }
 G.name = "KSE4"
+-- Native EdgeTX Radio Info defaults, independent of dashboard theme.
+G.txBatteryColors = {lcd.RGB(244,67,54), lcd.RGB(255,193,7), lcd.RGB(76,175,80)}
 G.assetRoot = "/WIDGETS/KSE4"
 local SMLSIZE      = rawget(_G, "SMLSIZE")      or SMLSIZE      or 0
 local MIDSIZE      = rawget(_G, "MIDSIZE")      or MIDSIZE      or 0
@@ -253,14 +255,6 @@ end
 local function batColor(pct)
   if pct >= 50 then return C_GREEN end
   if pct >= 20 then return C_YELLOW end
-  return C_RED
-end
-local function txBatColor(pct)
-  -- Classify the estimated whole percentage so floating-point rounding at the
-  -- voltage boundaries cannot turn an exact 50% green or an exact 30% yellow.
-  local wholePct = math.floor((pct or 0) + 0.5)
-  if wholePct >= 51 then return C_GREEN end
-  if wholePct >= 31 then return C_YELLOW end
   return C_RED
 end
 local function cellVoltageColor(sessionMin)
@@ -762,14 +756,14 @@ local function updateUiState()
     profilesReady and string.format("Profile %d / Rate %d",
       pidProfile, rateProfile) or "", C_TEXT)
 
-  local txPct = sensors.txPctFromVolts(sensors.getTxVolt(), txIsLiIon)
-  if txPct then
-    local fillH = math.floor((V.txBodyH - V.txInsetY * 2) * txPct / 100)
+  local txFill, txBand = sensors.txBatteryState()
+  if txFill and txFill > 0 then
+    local fillH = math.max(1, math.floor((V.txBodyH - V.txInsetY * 2) * txFill + 0.5))
     local fillY = V.txBodyY + V.txBodyH - V.txInsetY - fillH
     setObject(V.txFill, { y=fillY,
                           w=math.max(1, V.txBodyW - V.txInsetX * 2),
                           h=math.max(1, fillH),
-                          color=txBatColor(txPct) })
+                          color=G.txBatteryColors[txBand] })
     setVisible(V.txFill, fillH > 0)
   else
     setVisible(V.txFill, false)
@@ -942,6 +936,8 @@ local options = {
                              "Graphite", "Glacier", "Sunset", "Synthwave",
                              "Gulf", "Voltage", "Transparent Light",
                              "Titanium Ember", "Aurora", "Desert Night" } },
+  -- Candidate for a future feature: keep slot 2 until an explicit migration
+  -- can retire fallback use and safely interpret existing saved values 1/2.
   { "TxBatt",   CHOICE, 1, { "LiPo", "Li-Ion" } },
   { "MinFlight", VALUE, TOPBAR_MIN_DUR_DEFAULT, -30, 120 },
   { "HeliType", CHOICE, 1, { "Electric", "Nitro", "OMPHOBBY", "Auto Elec/Nitro", "OMP Auto" } },
@@ -957,7 +953,7 @@ local options = {
 }
 G.addFuelOption(options)
 local OPTION_LABELS = {
-  TxBatt   = "TX Battery",
+  TxBatt   = "TX Batt Fallback",
   MinFlight= "KSE Counter Min (sec)",
   HeliType = "Heli Type",
   BattRsv  = "Batt Reserve %",
