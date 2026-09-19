@@ -32,7 +32,7 @@ getSourceValue=function(id)
   if item.rawFlags then return item.value,item.current,item.fresh end
   return item.value,item.current~=false,item.fresh~=false
 end
-getRSSI=function() return 0 end
+getRSSI=function() return __mock.rssi or 0 end
 model={getInfo=function() return {name=__mock.modelName} end,
        getTimer=function() return __mock.timer end}
 fstat=function(path)

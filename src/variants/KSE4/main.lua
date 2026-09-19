@@ -333,7 +333,7 @@ local function setPanel(panel, bg, border)
   setObject(panel.border, { color=border })
 end
 
-local SIG_HEIGHTS = { 6, 10, 14, 18 }
+local SIG_HEIGHTS = { 5, 10, 15, 21, 31 }
 local function buildTopBar()
   local y, h = G.layout.top.y, G.layout.top.h
   local centerY = y + h / 2
@@ -356,7 +356,9 @@ local function buildTopBar()
   local totalBattH = battH + terminalH + oneY
   local battX = G.originX + G.w - G.x(10) - battW
   local battY = centerY - totalBattH / 2 + terminalH + oneY
-  local sigX = battX - G.x(14) - G.x(36)
+  local barW, barGap = math.max(3, G.x(5)), math.max(2, G.x(3))
+  local sigX = battX - G.x(14) - (barW * 5 + barGap * 4)
+  local signalH = math.max(12, math.min(h, G.y(31)))
   local profileSignalGap = math.max(8, G.x(10))
   local profileMinW = #"Profile 6 / Rate 6" * 9
   local profileX = math.min(timerX + G.x(150),
@@ -369,10 +371,10 @@ local function buildTopBar()
     SMLSIZE, C_TEXT, RIGHT)
   V.signal = {}
   for i, referenceH in ipairs(SIG_HEIGHTS) do
-    local bh = math.max(1, G.y(referenceH))
-    V.signal[i] = newRect(sigX + (i-1) * G.x(10),
-                          centerY + G.y(10) - bh,
-                          math.max(1, G.x(6)), bh,
+    local bh = math.max(1, math.floor(signalH * referenceH / 31 + 0.5))
+    V.signal[i] = newRect(sigX + (i-1) * (barW + barGap),
+                          math.floor(battY + battH + 0.5) - bh,
+                          barW, bh,
                           C_LINE, true, 0, 0)
   end
   V.txBody = newPanel(battX, battY, battW, battH, C_TILE, C_DIM,
@@ -744,11 +746,9 @@ local function updateUiState()
   local ss = math.abs(secs) - mm * 60
   setLabel(V.timer, string.format("%d:%02d", mm, ss), C_TEXT)
 
-  local rq = sensors.getRqly()
-  local bars = rq >= 80 and 4 or rq >= 60 and 3 or rq >= 40 and 2 or rq >= 20 and 1 or 0
-  local sigColor = bars >= 3 and C_GREEN or bars == 2 and C_YELLOW or C_RED
+  local bars = sensors.txSignalBars()
   for i, bar in ipairs(V.signal) do
-    setObject(bar, { color=(i <= bars) and sigColor or C_LINE })
+    setObject(bar, { color=(i <= bars) and C_TEXT or C_LINE })
   end
 
   local pidProfile, rateProfile, profilesReady = sensors.profilePair()

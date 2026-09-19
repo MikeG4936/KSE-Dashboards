@@ -41,6 +41,7 @@ for mode=1,3 do
     maxRefresh=math.max(maxRefresh,cost)
     api.background(widget)
   end
+
 end
 -- Inspect the real retained transmitter icon via test-only source exports.
 -- Native color must be independent of KSE's theme, and zero must hide both.
@@ -64,6 +65,49 @@ for _,theme in ipairs({1,2}) do
       assert(ui.txFill.properties.color==case[3],"transmitter color differs from native default")
       assert(ui.txFill.properties.y+expected==ui.txBodyY+ui.txBodyH-inset,
              "transmitter fill must stay anchored to bottom")
+    end
+  end
+  -- Native signal bars use monochrome foreground/inactive theme colors.
+  -- RQly stays 100 above: only the firmware's radio RSSI determines the icon.
+  __mock.values["tx-voltage"]={value=7.4}
+  for _,case in ipairs({{0,0},{29,0},{30,1},{40,2},{50,3},{60,4},{80,5},{99,5}}) do
+    __mock.rssi=case[1]
+    __mock.now=__mock.now+10
+    api.refresh(widget,nil,nil)
+    local ui,g,active,inactive,bg=__txTestUi(widget)
+    assert(#ui.signal==5,"native signal icon requires five bars")
+    local first=ui.signal[1].properties
+    local bottom=first.y+first.h
+    local height=ui.signal[5].properties.h
+    for i,ratio in ipairs({5,10,15,21,31}) do
+      local bar=ui.signal[i].properties
+      assert(bar.color==(i<=case[2] and active or inactive),"wrong native signal color/state")
+      assert(bar.y+bar.h==bottom,"signal bars must share a baseline")
+      assert(bar.h==math.max(1,math.floor(height*ratio/31+0.5)),"wrong native signal height ratio")
+      assert(bar.w>=3 and bar.y>=g.originY,"signal bars too small or clipped")
+      if i>1 then
+        local previous=ui.signal[i-1].properties
+        assert(bar.x>=previous.x+previous.w+2,"signal bars collide")
+      end
+    end
+    local last=ui.signal[5].properties
+    local batteryX=ui.txBodyX or ui.txBody.fill.properties.x
+    assert(last.x+last.w<batteryX,
+           "signal icon overlaps battery")
+    local label=ui.profileStatus.properties
+    assert(label.x+label.w<first.x,"profile label overlaps signal")
+    if case[1]==50 or case[1]==80 then
+      -- Rectangle snapshots produce reproducible host-side geometry previews.
+      -- Native font/antialiasing and physical-radio readability remain untested.
+      for _,item in ipairs(objects) do
+        local p=item.properties
+        if p.filled~=nil and not item.hidden and p.x>=first.x
+           and p.y>=g.originY and p.y+p.h<=ui.txBodyY+ui.txBodyH+1 then
+          print(string.format("ICON|%d|%d|%d|%g|%g|%g|%g|%d|%d|%g",
+            theme,case[1],bg,p.x,p.y,p.w,p.h,p.color,
+            (p.filled==true or p.filled==1) and 1 or 0,p.rounded or 0))
+        end
+      end
     end
   end
 end

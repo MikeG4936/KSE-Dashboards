@@ -117,7 +117,7 @@ local MIDSIZE      = rawget(_G, "MIDSIZE")      or MIDSIZE      or 0
 local BOLD_FONT    = _G.BOLD or SMLSIZE
 G.fontSmall, G.fontRingValue, G.fontTileValue = SMLSIZE, MIDSIZE, MIDSIZE
 G.fontGovernorValue, G.fontTop, G.fontTimer = MIDSIZE, MIDSIZE, MIDSIZE
-G.signalHeights = { 6, 10, 14, 18 }
+G.signalHeights = { 5, 10, 15, 21, 31 }
 local VALUE  = rawget(_G, "VALUE")  or 0
 local BOOL   = rawget(_G, "BOOL")   or 2
 local CHOICE = rawget(_G, "CHOICE") or 10
@@ -1405,6 +1405,17 @@ function sensors.txBatteryState()
                           + math.floor((high - low) / 2)) / (high - low))
   bars = math.min(width, bars)
   return bars / width, bars >= green and 3 or bars >= amber and 2 or 1
+end
+-- Display only: getRSSI() exposes the same filtered radio value used by
+-- EdgeTX Radio Info. Keep getRqly() and its safety/link evidence unchanged.
+function sensors.txSignalBars()
+  if type(getRSSI) ~= "function" then return 0 end
+  local ok, value = pcall(getRSSI)
+  if not ok or type(value) ~= "number" or not (value >= 0 and value <= 100) then
+    return 0
+  end
+  return value >= 80 and 5 or value >= 60 and 4 or value >= 50 and 3
+         or value >= 40 and 2 or value >= 30 and 1 or 0
 end
 function sensors.signalPercent(raw)
   local v = tonumber(raw)
@@ -2842,7 +2853,9 @@ local function buildTopBar(wgt)
   -- Both dashboards now express the signal geometry directly in the shared
   -- 800x480 reference, so both glyphs render at
   -- the same physical size and battery-relative position on every target.
-  local sigX = txBodyX - G.x(14) - G.x(36)
+  local barW, barGap = math.max(3, G.x(5)), math.max(2, G.x(3))
+  local sigX = txBodyX - G.x(14) - (barW * 5 + barGap * 4)
+  local signalH = math.max(12, math.min(t.h, G.y(31)))
   local timerW = math.max(90, G.x(500 / 3))
   local timerX = t.x + math.floor((t.w - timerW) / 2)
   local modelNameX = t.x + math.max(5, G.x(10))
@@ -2868,15 +2881,15 @@ local function buildTopBar(wgt)
     math.max(1, sigX - profileSignalGap - profileX), "",
     SMLSIZE, C_TEXT, RIGHT)
 
-  -- Match KSE4's ascending four-bar link-quality glyph immediately to the
+  -- Match EdgeTX Radio Info's ascending five-bar glyph immediately to the
   -- left of the vertical transmitter-battery indicator.
   ui.signal = {}
   for i, referenceH in ipairs(G.signalHeights) do
-    local barH = math.max(1, G.y(referenceH))
+    local barH = math.max(1, math.floor(signalH * referenceH / 31 + 0.5))
     ui.signal[i] = newRect(wgt,
-      sigX + (i - 1) * G.x(10),
-      centerY + G.y(10) - barH,
-      math.max(1, G.x(6)), barH, C_BORDER, true, 0, 0)
+      sigX + (i - 1) * (barW + barGap),
+      math.floor(txBodyY + txBodyH + 0.5) - barH,
+      barW, barH, C_BORDER, true, 0, 0)
   end
 
   ui.txBody = newPanel(wgt, txBodyX, txBodyY, txBodyW, txBodyH,
@@ -3107,13 +3120,9 @@ local function updateTopBar(wgt)
   setLabel(wgt, ui.modelName, modelName, C_TEXT)
   setLabel(wgt, ui.timer, formatTimer(getTimer1Secs()), C_TEXT)
 
-  local rq = sensors.getRqly()
-  local bars = rq >= 80 and 4 or rq >= 60 and 3
-               or rq >= 40 and 2 or rq >= 20 and 1 or 0
-  local signalColor = bars >= 3 and C_GREEN
-                      or bars == 2 and C_YELLOW or C_RED
+  local bars = sensors.txSignalBars()
   for i, bar in ipairs(ui.signal or {}) do
-    setObject(wgt, bar, { color=i <= bars and signalColor or C_BORDER })
+    setObject(wgt, bar, { color=i <= bars and C_TEXT or C_BORDER })
   end
 
   local pidProfile, rateProfile, profilesReady = sensors.profilePair()

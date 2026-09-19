@@ -11,3 +11,7 @@ Both deployed dashboard files execute their real create/update/refresh/backgroun
 The LVGL object API, telemetry, files and radio are mocks. RF Tool is not loaded. This catches missing renderer references and invalid callback/property operations after assembly; it does not establish visual fidelity, native LVGL allocation/cost, actual RF latency or transmitter memory. Use the separate picker contracts for dialog/native-menu geometry and the README's radio checks for physical validation.
 
 Temporary test exports also expose the retained transmitter-battery objects. Both variants must use native default colors under dark/light themes, map the expected native fill fraction to their vertical height, remain bottom-anchored, and hide the fill at empty or unavailable voltage. The production dashboards contain no test exports.
+
+The five retained signal bars are checked under dark/light themes for native threshold decisions, foreground/inactive colors, height proportions, common baseline, readable widths/gaps, and separation from the battery and profile label. Named `RQly` stays at 100 while the native radio RSSI is varied, catching accidental reuse of the wrong source.
+
+Pass `--preview-dir /path/to/previews` to save SVG crops built from actual retained rectangle properties at three and five bars for each resolution/theme/variant. These previews are reproducible geometry evidence, not native LVGL rasterization or physical-radio readability validation. Font metrics and antialiasing are outside their scope.

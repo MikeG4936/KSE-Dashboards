@@ -371,6 +371,17 @@ function sensors.txBatteryState()
   bars = math.min(width, bars)
   return bars / width, bars >= green and 3 or bars >= amber and 2 or 1
 end
+-- Display only: getRSSI() exposes the same filtered radio value used by
+-- EdgeTX Radio Info. Keep getRqly() and its safety/link evidence unchanged.
+function sensors.txSignalBars()
+  if type(getRSSI) ~= "function" then return 0 end
+  local ok, value = pcall(getRSSI)
+  if not ok or type(value) ~= "number" or not (value >= 0 and value <= 100) then
+    return 0
+  end
+  return value >= 80 and 5 or value >= 60 and 4 or value >= 50 and 3
+         or value >= 40 and 2 or value >= 30 and 1 or 0
+end
 function sensors.signalPercent(raw)
   local v = tonumber(raw)
   if v == nil then return nil end

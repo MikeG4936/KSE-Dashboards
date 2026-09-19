@@ -10,7 +10,7 @@ ROOT = Path(__file__).resolve().parents[2]
 HERE = Path(__file__).resolve().parent
 SENSORS = """activeSensorName getSensorNumber resolveNamed getCellCount getPackVolt
 getCellVoltage getBatPct getCapa getCurr getTemp getBec getRxBatt getBattProfile
-getHeadspeed getTailRpm getGovernorMode getGovState getTxVolt txBatteryState
+getHeadspeed getTailRpm getGovernorMode getGovState getTxVolt txBatteryState txSignalBars
 signalPercent getRqly percentFromCellVoltage selectFlightBatteryPercent
 calculateAdjustedPercent profileIndexValid profilePair flightStatusPending""".split()
 FUNCTIONS = """clearFrameCache applyOptions tick resetSessionEvidence

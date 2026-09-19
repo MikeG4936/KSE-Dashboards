@@ -147,6 +147,31 @@ __runContracts=function()
   check("TX NaN source has no fill",t.txBatteryState(),nil)
   reset()
   check("RSSI conversion",t.signalPercent(-80),50)
+  -- Top-bar display follows native filtered radio RSSI, independently of
+  -- discovered RQly/RSSI sensors and the engine's existing link safety state.
+  local radioRssi=getRSSI
+  source("RQly",100)
+  source("RSSI",100)
+  t.A.linkSourceKnown=false;t.A.linkSourceSeen=false
+  for _,case in ipairs({{0,0},{29,0},{30,1},{39,1},{40,2},{49,2},
+                        {50,3},{59,3},{60,4},{79,4},{80,5},{99,5},{100,5}}) do
+    getRSSI=function() return case[1] end
+    check("native signal bars "..case[1],t.txSignalBars(),case[2])
+  end
+  check("signal display leaves known link evidence",t.A.linkSourceKnown,false)
+  check("signal display leaves seen link evidence",t.A.linkSourceSeen,false)
+  for _,value in ipairs({-70,101,"80",false,0/0,math.huge}) do
+    getRSSI=function() return value end
+    check("invalid native signal "..tostring(value),t.txSignalBars(),0)
+  end
+  getRSSI=function() return nil end
+  check("nil native signal",t.txSignalBars(),0)
+  getRSSI=function() error("unavailable") end
+  check("throwing native signal",t.txSignalBars(),0)
+  getRSSI=nil
+  check("missing native signal API",t.txSignalBars(),0)
+  getRSSI=radioRssi
+  reset()
 
   -- Assert selector authority independently of UI smoothing and source cache.
   local p,valid,kind=t.selectFlightBatteryPercent(1,72,true,95,true,true)

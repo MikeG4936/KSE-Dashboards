@@ -60,6 +60,10 @@ For the OMP Auto extension, use the [OMP identity contract](omp-auto-identificat
 
 Follow the [EdgeTX 2.12.4 battery contract](edgetx-2.12.4-battery-icon-comparison.md#implementation-contract) for shared range, integer rounding, color bands and empty fill. Preserve all saved option slots; `TxBatt` remains a fallback and candidate for a later explicitly migrated feature. Validate behavior/parity and retained rendering at all three dimensions, unchanged Auto/OMP option contracts, both compiler/resource gates, and independent EdgeTX compatibility review. Keep comparison against native screens on an actual transmitter as a separate slice-6 checkpoint.
 
+## Signal-display alignment extension
+
+Use the [native status-icon contract](edgetx-2.12.4-status-icons.md) for a display-only five-bar signal helper shared by both dashboards. Keep the current vertical battery, saved options and alert/RF link evidence unchanged; defer audio indication pending a verified firmware API. Require exact threshold/zero/invalid-source behavior tests, retained geometry checks at all three dimensions, compiler/resource comparison, and independent parity review. Physical-radio readability and signal-loss timing remain slice-6 checks.
+
 ## Slice handoff
 
 The Nitro fuel reminder extension follows the [fuel reminder contract](KSE4-KSE5-optimization-review.md#nitro-fuel-reminder-contract) and [Auto lifecycle fixtures](../tests/auto_type/README.md). Preserve Timer 1 configuration and the original ten saved settings; append the fuel setting only on firmware with verified capacity; require existing behavior/MSP/ownership/storage/render and compiler/resource gates, independent compatibility review, and separate transmitter audio/haptic checks.

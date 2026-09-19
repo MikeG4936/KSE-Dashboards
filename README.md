@@ -120,6 +120,12 @@ Both dashboards have the same settings. Their colors and a few setting names dif
 
 ## Using the features
 
+### Radio status icons
+
+Both dashboards show five signal bars using the same filtered radio link value and thresholds as EdgeTX 2.12.4's native Radio Info widget: 30, 40, 50, 60, and 80. Active and inactive bars use contrasting dashboard theme colors, with compact geometry sized for the KSE header. The transmitter battery stays vertical and retains its EdgeTX-aligned charge behavior.
+
+A volume indicator is deferred: stock EdgeTX 2.12.4 does not expose live radio volume or mute state to Lua. KSE will need a supported firmware API to reproduce it accurately.
+
 ### Battery readings and warnings
 
 The small transmitter battery icon follows EdgeTX 2.12.4's native **Radio Info** battery range, rounded fill levels and color transitions for your screen size. It keeps KSE's vertical shape and uses the native default green/amber/red shades in every theme. Changes to the radio battery range are picked up within one second of active dashboard refresh. Custom colors selected in a separate Radio Info widget are not copied. The radio's low-battery alarm remains independent of icon color.
