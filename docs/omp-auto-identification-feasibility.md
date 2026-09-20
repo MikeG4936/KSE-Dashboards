@@ -1,4 +1,4 @@
-# OMP automatic dashboard identification feasibility
+# OMP Auto: identity contract and source evidence
 
 Source research: 2026-09-15; acquisition contract revised 2026-09-20. Scope: OMP M1 V3 PRO and M2 V3 SPORT using OFS3(+) with ExpressLRS/CRSF. This note records the source evidence and the OMP Auto implementation contract. It does not certify radio behavior.
 
@@ -37,7 +37,7 @@ Pack voltage alone is a weaker heuristic: it relies on expected battery conditio
 
 Local baseline: `c3cc1362a5e3493c7c68e5a11a88b1394f377153`. Both generated dashboards use the same authored telemetry code. At that baseline, the [OMP sensor map and cell helpers](../src/shared/telemetry.lua) read `RxBt`, ignored `Volt`, inferred 3S from an `M2` name match or 2S from `M1`, and derived average cell voltage by division. The M1 branch also selected LiHV chemistry. Manual OMP retains that behavior; the automatic extension belongs in the shared engine.
 
-Existing [model-name selection](../src/shared/telemetry.lua), [image lookup](../src/shared/images.lua) and [flight-counter identity](../src/shared/counters.lua) already share `getModelName()`. The existing [Auto Elec/Nitro feature](../src/shared/auto_heli.lua) supplies a confirmed Rotorflight name to that path without renaming the saved radio model. It is currently Rotorflight-only and must not be fed OMP labels through its Electric/Nitro inference. An OMP identity provider could reuse the display/image/count paths while keeping OMP telemetry and its local counter.
+Existing [model-name selection](../src/shared/telemetry.lua), [image lookup](../src/shared/images.lua) and [flight-counter identity](../src/shared/counters.lua) already share `getModelName()`. The existing [Auto Elec/Nitro feature](../src/shared/auto_heli.lua) supplies a confirmed Rotorflight name to that path without renaming the saved radio model. It is currently Rotorflight-only and must not be fed OMP labels through its Electric/Nitro inference. The shared OMP identity provider reuses the display/image/count paths while keeping OMP telemetry and its local counter.
 
 EdgeTX 2.12.4, commit `def35ad324896b45d6607d4778536b1bc5360d20`, independently confirms the required API behavior:
 
@@ -50,7 +50,7 @@ EdgeTX 2.12.4, commit `def35ad324896b45d6607d4778536b1bc5360d20`, independently 
 
 These source conventions also hold in the compiler-test baseline, EdgeTX v2.12.1 `1511b3f29152f18c704f1f89b3608e0f71317de9`: [source indexing](https://github.com/EdgeTX/edgetx/blob/1511b3f29152f18c704f1f89b3608e0f71317de9/radio/src/lua/api_general.cpp#L475-L508), [sensor metadata](https://github.com/EdgeTX/edgetx/blob/1511b3f29152f18c704f1f89b3608e0f71317de9/radio/src/lua/api_model.cpp#L1746-L1763), and [native RPM/voltage decoding](https://github.com/EdgeTX/edgetx/blob/1511b3f29152f18c704f1f89b3608e0f71317de9/radio/src/telemetry/crossfire.cpp#L248-L294).
 
-Append **OMP Auto** as Heli Type choice 5, preserving the original ten saved option slots, manual OMP choice 3 and Rotorflight Auto Elec/Nitro choice 4. Its effective type remains OMPHOBBY and its effective counter remains KSE Counter, without changing the saved counter preference. Confirm `RxBt / Volt` near 2 or 3 and use the fixed names **OMP M1** and **OMP M2** for title, image lookup and separate local flight histories. The saved EdgeTX model name is arbitrary and is never changed; `OMP Helis` is an example. Existing counts under those exact keys are reused; other history is neither merged nor migrated.
+**OMP Auto** occupies Heli Type choice 5, preserving the original ten saved option slots, manual OMP choice 3 and Rotorflight Auto Elec/Nitro choice 4. Its effective type remains OMPHOBBY and its effective counter remains KSE Counter, without changing the saved counter preference. Confirm `RxBt / Volt` near 2 or 3 and use the fixed names **OMP M1** and **OMP M2** for title, image lookup and separate local flight histories. The saved EdgeTX model name is arbitrary and is never changed; `OMP Helis` is an example. Existing counts under those exact keys are reused; other history is neither merged nor migrated.
 
 The shared [identity module](../src/shared/omp_auto.lua) samples at 10 Hz, before layout and counting, and requires 50 ticks of a consistent supported voltage ratio. Require a live RSSI link, average cell voltage from 2.0 to 4.5 V and a quotient within 0.15 of 2 or 3. RPM and ARM do not gate identification. Once confirmed, the identity remains locked for that live connection: changing voltage, RPM, sensor slots or callback timing cannot select a different aircraft. An observed disconnect, explicit mode/model change or reset permits new acquisition.
 

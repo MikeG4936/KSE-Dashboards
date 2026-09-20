@@ -26,3 +26,17 @@ The default is **KSE5 / RadioMaster TX16S MK3 / MAX (800 × 480)**. The original
 Smaller widget zones or future layout changes may require display scaling. If the same model picture is shared by KSE4 and KSE5 on one SD card, use the KSE5 copy; KSE4 can scale it down. Do not copy both versions over the same filename.
 
 Transparent pixels stay transparent. Solid backgrounds are retained; the tool does not redraw the aircraft or remove painted backgrounds. Enlarging a small source cannot restore missing detail. BMP inputs become PNGs; existing PNG names are retained unless a duplicate or invalid filename needs adjusting. For OMP Auto, use `OMP M1.png` and `OMP M2.png`.
+
+## Optional Python batch resizer
+
+Use `resize_kse_images.py` to process a folder or script repeated conversions. This alternative requires Python 3.9+ and Pillow; the browser tool above does not.
+
+On Windows, run `Resize KSE Images.bat`; on macOS, open `Resize KSE Images.command`. Keep the launcher beside `resize_kse_images.py`. The launchers create a private virtual environment and install Pillow on first use, which requires internet access, then prompt for dashboard, screen size and pictures. Default output goes to a new timestamped folder under `Resized Images/`.
+
+For command-line use, install Pillow in your Python environment and run:
+
+```sh
+python3 tools/images/resize_kse_images.py /path/to/pictures --dashboard both --screen 800x480 --output /path/to/resized
+```
+
+Folder inputs are not recursive. Existing output files are skipped rather than overwritten. Follow the same model naming and SD-card copying instructions above.

@@ -6,19 +6,22 @@ The assembler inserts shared lexical fragments and the existing scoped modules i
 
 Keep telemetry, options, alerts, counters, RF scheduling and lifecycle decisions in the common engine. Renderer files own layout, colors, fonts, image placement and touch geometry. `option_theme.lua` preserves each dashboard's persisted theme mapping. RF prompt/banner/touch fragments execute inside the common controller's existing scope; shared code owns picker intents, validity and request admission. Geometry hooks on `G` adapt creation and rendering without adding another runtime script.
 
-The transmitter icon uses the shared native EdgeTX range/rounding/color-band calculation; renderer adapters only map its fill fraction into their vertical geometry and apply native default RGB colors. Keep `TxBatt` CHOICE in saved slot 2 as **TX Batt Fallback**; deleting it shifts all subsequent persisted options. This slot is a candidate for a future feature only after an explicit migration retires fallback use and prevents saved choices 1/2 from being interpreted as new feature settings. See the [battery comparison and implementation contract](../docs/edgetx-2.12.4-battery-icon-comparison.md).
+## Behavior contracts
 
-The five-bar signal icon uses `sensors.txSignalBars()` and firmware `getRSSI()` for native display parity. Do not reuse the named-sensor `getRqly()` fallback or mutate its link evidence for this display; it remains part of the unchanged alert/RF safety engine. Preserve the vertical battery. Volume is deferred until a verified firmware API exposes live volume and mute state; see the [status-icon source contract](../docs/edgetx-2.12.4-status-icons.md).
+Consult the applicable contract before changing these boundaries:
 
-The Nitro fuel reminder reads Timer 1 in shared telemetry service, independently of the selected counter and Battery Voice. Keep its latch separate from RF, type and battery-alert resets. Creation with an expired timer cannot replay it; an observed elapsed value below the configured threshold rearms it. Fuel Check Timer occupies slot 11 as CHOICE on EdgeTX 2.12+: index 1 is Off, indices 2–121 are 00:15–30:00 in 15-second steps, and default index 25 is 06:00. Build the labels once with the descriptor. Changing from the earlier STRING or VALUE field requires reselecting the duration; invalid indices stay Off. Preserve the original ten settings; older firmware keeps its ten-option descriptor and fixed six-minute reminder. See the [fuel reminder contract](../docs/KSE4-KSE5-optimization-review.md#nitro-fuel-reminder-contract) and [Auto lifecycle fixtures](../tests/auto_type/README.md).
+- **RF, ARM, ownership, Auto Elec/Nitro, Nitro reminder or footer status:** [compatibility contracts](../docs/compatibility.md) and [RF integration](../docs/rf-integration.md) define current behavior, staged operations and retained upstream limitations.
+- **OMP Auto:** [identity contract](../docs/omp-auto-identification-feasibility.md#omp-auto-implementation-contract) covers source qualification, acquisition, flight retention and shared image/count identity. It remains separate from Rotorflight Auto and MSP admission.
+- **Transmitter battery or saved TxBatt option:** [battery contract](../docs/edgetx-2.12.4-battery-icon-comparison.md#implementation-contract) defines native range/color behavior and slot-2 preservation.
+- **Signal or volume indication:** [status-icon contract](../docs/edgetx-2.12.4-status-icons.md) keeps native signal display independent of alert/RF link evidence and documents why volume remains deferred.
+- **Image loading:** [resource limits](../docs/image-resource-limits.md) define header screening, fallback and native-memory boundaries.
+- **Count storage:** [storage contracts](../tests/storage/README.md) define recovery, dirty-cache handoff and EdgeTX filesystem semantics.
 
-ARM sampling retains only a sensor ID and the timestamp of an observed fresh update on the owning widget. Re-read the actual current ARM value each time; apply the [four-second update-evidence contract](../docs/KSE4-KSE5-optimization-review.md#arm-update-timing-contract) consistently to MSP, FC-count settling and footer status. Reset/context/identity loss expires that evidence; motor-stop and OMP freshness rules stay separate.
+## Validation
 
-Auto Elec/Nitro is choice 4 in the existing Heli Type slot. Its confirmed FC name and effective mode belong to the shared engine; renderer fragments only present its status. Synchronize identity before telemetry and before/after embedded RF service. Callback admission independently checks the current published FC name and provider identity, including when an external RF host runs before KSE. Name confirmation does not relax or add a delay to the ARM admission policy.
+Run the affected behavior/parity contracts below and EdgeTX compiler checks for both generated outputs. Create compiler headroom before expanding helper-heavy code; apply the [resource gates](../tools/edgetx/README.md) to every compiled function, distinguish project margins from upstream hard limits, and compare resource usage before and after the change. Keep checkers and regression fixtures reproducible from a fresh checkout.
 
-OMP Auto is choice 5, with effective type OMPHOBBY. `shared/omp_auto.lua` confirms the CRSF pack/average-cell voltage ratio for each connection and supplies the fixed `OMP M1`/`OMP M2` display, image and local-count names. It does not rename the saved EdgeTX model or use the Rotorflight Auto provider. Synchronize before layout and counting; retain confirmed identity through flight and brief telemetry gaps. Follow the [OMP contract and source evidence](../docs/omp-auto-identification-feasibility.md).
-
-Ownership spans both dashboard variants. Preserve monotonically increasing operation tokens when an old widget regains ownership: a captured old callback must never match a new operation. Pending dirty count data lives in the shared ownership registry; cache aliases must follow its current table. Bind each widget to its creation-time saved model filename and observed model generation. A known model change retires the previous owner's pending work; the new model's foreground refresh can take ownership immediately. Creation and background callbacks cannot replace an owner. Same-model recreation and unavailable filename evidence retain the 500-tick fallback; obsolete model callbacks cannot reclaim ownership or draw a duplicate warning. See [ownership contracts](../tests/ownership/README.md) before changing these boundaries.
+Recheck current functions and the cited upstream versions before extending a contract. Hardware acceptance and independent review requirements are in [transmitter validation](../docs/transmitter-validation.md).
 
 Validation entry points:
 
@@ -28,6 +31,9 @@ Validation entry points:
 - [MSP admission](../tests/msp_admission/README.md): pinned RF queue, continuation stages and embedded/external servicing.
 - [Storage](../tests/storage/README.md): recovery, handoff and instruction profiles.
 - [Picker](../tests/picker/README.md) and [rendering](../tests/render/README.md): capabilities, preserved style and actual render-function smoke coverage.
+- [Image bounds](../tests/assets/README.md): supplied assets, PNG/BMP headers and bounded resource checks before native decoding.
 - [Compiler tooling](../tools/edgetx/README.md): every-prototype EdgeTX limits and project margins.
 
-Mocks and desktop compilation establish only their documented scope. Final transmitter validation remains governed by slice 6 of the [implementation plan](../docs/implementation-plan.md).
+Report passed checks, unresolved findings and outstanding radio validation separately. Real-radio memory, timing and RF claims require real-radio evidence; mocks and desktop compilation establish only their tested scope. Use the [transmitter validation matrix](../docs/transmitter-validation.md) for outstanding hardware checks.
+
+The [maintainer documentation index](../docs/README.md) maps current contracts, source evidence, release packaging and historical material.

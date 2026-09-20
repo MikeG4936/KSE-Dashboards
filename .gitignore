@@ -1,4 +1,4 @@
-# Publish the dashboard variants, gallery, and selected project instructions.
+# Publish only the project files listed below; local notes and output stay private.
 /*
 !/.gitignore
 !/README.md
@@ -12,120 +12,39 @@
 !/KSE5/
 !/theme-gallery/
 
-# Agent context and implementation evidence; keep other local notes private.
+# Current maintainer contracts and source evidence.
 /docs/*
-!/docs/implementation-plan.md
-!/docs/KSE4-KSE5-optimization-review.md
-!/docs/rf-adapter-design.md
-!/docs/telemetry-configuration-audit.md
-!/docs/omp-auto-identification-feasibility.md
-!/docs/image-resource-limits.md
+!/docs/README.md
+!/docs/compatibility.md
 !/docs/edgetx-2.12.4-battery-icon-comparison.md
 !/docs/edgetx-2.12.4-status-icons.md
+!/docs/image-resource-limits.md
+!/docs/omp-auto-identification-feasibility.md
+!/docs/release-packaging.md
+!/docs/rf-integration.md
+!/docs/runtime-resources.md
+!/docs/telemetry-configuration-audit.md
+!/docs/transmitter-validation.md
 
-# Host-side compatibility tooling and fixtures; never copy these to the radio.
-/tools/*
-!/tools/assemble.py
-!/tools/edgetx/
-!/tools/images/
-/tools/images/*
-!/tools/images/resize_kse_images.py
-!/tools/images/Resize KSE Images.command
-!/tools/images/Resize KSE Images.bat
-!/tools/images/README.md
-!/tools/images/KSE Image Resizer.html
-/tools/edgetx/*
-!/tools/edgetx/*.py
-!/tools/edgetx/*.c
-!/tools/edgetx/*.h
-!/tools/edgetx/README.md
-/tests/*
-!/tests/behavior/
-/tests/behavior/*
-!/tests/behavior/*.py
-!/tests/behavior/*.lua
-!/tests/behavior/README.md
-!/tests/rf_trace/
-/tests/rf_trace/*
-!/tests/rf_trace/*.py
-!/tests/rf_trace/*.lua
-!/tests/rf_trace/README.md
-!/tests/picker/
-/tests/picker/*
-!/tests/picker/*.py
-!/tests/picker/*.lua
-!/tests/picker/README.md
-!/tests/assets/
-/tests/assets/*
-!/tests/assets/*.py
-!/tests/assets/README.md
-!/tests/storage/
-/tests/storage/*
-!/tests/storage/*.py
-!/tests/storage/*.lua
-!/tests/storage/README.md
+# Authored engine and renderers; generate the installable scripts with tools/assemble.py.
 /src/*
+!/src/README.md
 !/src/shared/
 /src/shared/*
-!/src/shared/count_storage.lua
-!/src/shared/msp_admission.lua
-!/src/shared/widget_owner.lua
-!/tests/ownership/
-/tests/ownership/*
-!/tests/ownership/*.py
-!/tests/ownership/*.lua
-!/tests/ownership/README.md
-!/tests/msp_admission/
-/tests/msp_admission/*
-!/tests/msp_admission/*.py
-!/tests/msp_admission/*.lua
-!/tests/msp_admission/README.md
-
-# Local future-widget design/reference document; do not publish.
-/KSE_FUTURE_WIDGET_IMPLEMENTATION_BLUEPRINT.md
-
-# KSE4 release source
-/KSE4/*
-!/KSE4/main.lua
-!/KSE4/default.png
-!/KSE4/default1.png
-!/KSE4/BatterySounds/
-/KSE4/BatterySounds/*
-!/KSE4/BatterySounds/*.wav
-
-# KSE5 release source
-/KSE5/*
-!/KSE5/main.lua
-!/KSE5/default.png
-!/KSE5/default1.png
-!/KSE5/BatterySounds/
-/KSE5/BatterySounds/*
-!/KSE5/BatterySounds/*.wav
-
-# GitHub theme gallery and committed preview assets
-/theme-gallery/*
-!/theme-gallery/README.md
-!/theme-gallery/index.html
-!/theme-gallery/styles.css
-!/theme-gallery/themes.js
-!/theme-gallery/gallery.js
-!/theme-gallery/generate_previews.py
-!/theme-gallery/validate_gallery.py
-!/theme-gallery/assets/
-/theme-gallery/assets/*
-!/theme-gallery/assets/*.png
-
-# Authored engine and renderer inputs for deterministic standalone assembly.
-!/src/shared/enums.lua
-!/src/shared/state.lua
-!/src/shared/options.lua
-!/src/shared/telemetry.lua
 !/src/shared/alerts.lua
+!/src/shared/auto_heli.lua
+!/src/shared/count_storage.lua
 !/src/shared/counters.lua
+!/src/shared/enums.lua
 !/src/shared/images.lua
-!/src/shared/rf.lua
 !/src/shared/lifecycle.lua
-!/src/README.md
+!/src/shared/msp_admission.lua
+!/src/shared/omp_auto.lua
+!/src/shared/options.lua
+!/src/shared/rf.lua
+!/src/shared/state.lua
+!/src/shared/telemetry.lua
+!/src/shared/widget_owner.lua
 !/src/variants/
 /src/variants/*
 !/src/variants/KSE4/
@@ -134,23 +53,104 @@
 /src/variants/KSE5/*
 !/src/variants/KSE4/*.lua
 !/src/variants/KSE5/*.lua
-!/tests/render/
-/tests/render/*
-!/tests/render/*.py
-!/tests/render/*.lua
-!/tests/render/README.md
 
-!/src/shared/auto_heli.lua
-!/src/shared/omp_auto.lua
+# Reproducible host tooling and user image utilities.
+/tools/*
+!/tools/assemble.py
+!/tools/edgetx/
+!/tools/images/
+/tools/edgetx/*
+!/tools/edgetx/*.py
+!/tools/edgetx/*.c
+!/tools/edgetx/*.h
+!/tools/edgetx/README.md
+/tools/images/*
+!/tools/images/KSE Image Resizer.html
+!/tools/images/README.md
+!/tools/images/Resize KSE Images.bat
+!/tools/images/Resize KSE Images.command
+!/tools/images/resize_kse_images.py
 
+# Current regression suites; host-only, never installed on the radio.
+/tests/*
+!/tests/assets/
+/tests/assets/*
+!/tests/assets/*.py
+!/tests/assets/*.lua
+!/tests/assets/README.md
 !/tests/auto_type/
 /tests/auto_type/*
 !/tests/auto_type/*.py
 !/tests/auto_type/*.lua
 !/tests/auto_type/README.md
-
+!/tests/behavior/
+/tests/behavior/*
+!/tests/behavior/*.py
+!/tests/behavior/*.lua
+!/tests/behavior/README.md
+!/tests/msp_admission/
+/tests/msp_admission/*
+!/tests/msp_admission/*.py
+!/tests/msp_admission/*.lua
+!/tests/msp_admission/README.md
 !/tests/omp_auto/
 /tests/omp_auto/*
 !/tests/omp_auto/*.py
 !/tests/omp_auto/*.lua
 !/tests/omp_auto/README.md
+!/tests/ownership/
+/tests/ownership/*
+!/tests/ownership/*.py
+!/tests/ownership/*.lua
+!/tests/ownership/README.md
+!/tests/picker/
+/tests/picker/*
+!/tests/picker/*.py
+!/tests/picker/*.lua
+!/tests/picker/README.md
+!/tests/render/
+/tests/render/*
+!/tests/render/*.py
+!/tests/render/*.lua
+!/tests/render/README.md
+!/tests/storage/
+/tests/storage/*
+!/tests/storage/*.py
+!/tests/storage/*.lua
+!/tests/storage/README.md
+
+# KSE4 standalone deployment.
+/KSE4/*
+!/KSE4/main.lua
+!/KSE4/default.png
+!/KSE4/default1.png
+!/KSE4/BatterySounds/
+/KSE4/BatterySounds/*
+!/KSE4/BatterySounds/*.wav
+
+# KSE5 standalone deployment.
+/KSE5/*
+!/KSE5/main.lua
+!/KSE5/default.png
+!/KSE5/default1.png
+!/KSE5/BatterySounds/
+/KSE5/BatterySounds/*
+!/KSE5/BatterySounds/*.wav
+
+# Offline gallery, committed previews and maintainer generators.
+/theme-gallery/*
+!/theme-gallery/README.md
+!/theme-gallery/assets/
+!/theme-gallery/gallery.js
+!/theme-gallery/generate_previews.py
+!/theme-gallery/index.html
+!/theme-gallery/styles.css
+!/theme-gallery/themes.js
+!/theme-gallery/validate_gallery.py
+/theme-gallery/assets/*
+!/theme-gallery/assets/*.png
+
+# Regenerable desktop metadata and interpreter caches.
+.DS_Store
+__pycache__/
+*.pyc

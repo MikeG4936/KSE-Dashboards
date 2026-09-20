@@ -37,35 +37,7 @@ Radio range and warning values have a confirmed public Lua API. This source revi
 
 This is a source comparison, not a measured radio rendering or battery-capacity validation. Voltage-derived percentage is a configured gauge position, not a coulomb-counted state-of-charge measurement.
 
-## KSE comparison
-
-The following table describes the pre-alignment code at KSE commit `ae828aab4b1a77e4596c97dc4717529aca589264`. Current behavior is defined by the implementation contract below.
-
-| Behavior | KSE4 and KSE5 | EdgeTX 2.12.4 Radio Info |
-|---|---|---|
-| Voltage source | `tx-voltage`; no additional battery smoothing | Same firmware-filtered voltage |
-| Empty/full range | Fixed 7.0–8.4 V for LiPo, 6.2–8.4 V for Li-Ion | User-configured radio battery range |
-| Percentage estimate | Linear, clamped 0–100 | Linear, clamped to fill width |
-| Green | Rounded percentage >=51; mathematical boundary 50.5% | Rounded fill >=12/20 or >=17/28; approximately 57.5% or 58.93% |
-| Yellow/amber | Rounded percentage 31–50; starts at 30.5% | Rounded fill >=5/20 or >=7/28; starts at approximately 22.5% or 23.21% |
-| Red | Rounded percentage <=30 | Below amber fill threshold |
-| Depletion | Vertical fill, floor of inner height × percentage | Horizontal fill, nearest-integer native width |
-| Empty | KSE4 hides zero-height fill; KSE5 retains one pixel for valid zero percentage | Requests zero fill width |
-| Palette | Dashboard colors; KSE5 also varies with theme | Radio Info's configurable three-color palette |
-
-Baseline evidence is reproducible with `git show ae828aab4b1a77e4596c97dc4717529aca589264:src/shared/telemetry.lua` and the same revision's `src/shared/options.lua`, `src/variants/KSE4/main.lua`, and `src/variants/KSE5/main.lua`. The original KSE4 transmitter palette used RGB (34,197,94)/(240,180,41)/(239,68,68); KSE5's base palette used (28,232,119)/(255,196,48)/(255,64,80), with light-theme overrides.
-
-### Concrete differences with matching endpoints
-
-These examples assume EdgeTX's battery range is deliberately configured to the same endpoints as the selected KSE chemistry. They are calculations from the source formulas, not readings from the user's radio.
-
-| Range and reading | KSE estimate/color | Native 480-wide fill/color | Native 800-wide fill/color |
-|---|---|---|---|
-| Li-Ion 6.2–8.4 V, reading 7.4 V | 54.55%, green | 11/20 (55%), amber | 15/28 (53.57%), amber |
-| Li-Ion 6.2–8.4 V, reading 6.8 V | 27.27%, red | 5/20 (25%), amber | 8/28 (28.57%), amber |
-| LiPo 7.0–8.4 V, reading 7.8 V | 57.14%, green | 11/20 (55%), amber | 16/28 (57.14%), amber |
-
-Different configured endpoints can produce a much larger depletion mismatch. For example, with EdgeTX configured to 6.2–8.4 V while KSE selects LiPo, a 7.4 V reading maps to 54.55% before native rounding versus KSE's 28.57%.
+## KSE implementation
 
 ### Implementation contract
 

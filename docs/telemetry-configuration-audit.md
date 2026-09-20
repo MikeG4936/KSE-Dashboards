@@ -64,9 +64,9 @@ ELRS link statistics (`RQly`/`LQ`, `RSSI`, `TPWR`, `RFMD`) are separate from thi
 
 ### RF Tool and feature preservation
 
-Retain `ARM`: the KSE admission gate requires current ARM bit 0 plus the [bounded recent-update evidence](KSE4-KSE5-optimization-review.md#arm-update-timing-contract) to confirm disarm. Ordinary Lua reads consume values already held by EdgeTX; they do not request each value via MSP. `Gov` and `Hspd` remain needed for instruments/motor alerts, despite their removal from MSP admission conditions. The current arming-blocker banner uses `mspStatus`, so removing `ARMD` reporting does not remove that banner. PID/rate/battery profile telemetry is still needed during flight; the ground MSP operations are not a substitute for it.
+Retain `ARM`: the KSE admission gate requires current ARM bit 0 plus the [bounded recent-update evidence](compatibility.md#arm-update-timing-contract) to confirm disarm. Ordinary Lua reads consume values already held by EdgeTX; they do not request each value via MSP. `Gov` and `Hspd` remain needed for instruments/motor alerts, despite their removal from MSP admission conditions. The current arming-blocker banner uses `mspStatus`, so removing `ARMD` reporting does not remove that banner. PID/rate/battery profile telemetry is still needed during flight; the ground MSP operations are not a substitute for it.
 
-On the personal branch, Auto helicopter type preserves the same telemetry requirements. It consumes `rf2.modelName` from the host's existing [MSP name initialization](https://github.com/rotorflight/rotorflight-lua-scripts/blob/aaacfe68407c09d49a26c5aa326c00119b378bb0/src/SCRIPTS/RF2/background_init.lua#L130-L156); it does not depend on `MDL#`, require **Set name on TX**, or add KSE name-polling requests. The [Auto confirmation and lifecycle contract](KSE4-KSE5-optimization-review.md#auto-helicopter-type-integration-contract) still applies with the smaller sensor list.
+Auto helicopter type preserves the same telemetry requirements. It consumes `rf2.modelName` from the host's existing [MSP name initialization](https://github.com/rotorflight/rotorflight-lua-scripts/blob/aaacfe68407c09d49a26c5aa326c00119b378bb0/src/SCRIPTS/RF2/background_init.lua#L130-L156); it does not depend on `MDL#`, require **Set name on TX**, or add KSE name-polling requests. The [Auto confirmation and lifecycle contract](compatibility.md#auto-helicopter-type-integration-contract) still applies with the smaller sensor list.
 
 RF Tool's Adjustment Teller consumes `AdjF`/`AdjV`. Retaining selector 99 follows the official instruction to enable Adjustment Function with custom telemetry. There is no need to modify RF Tool or use a special KSE decoder for the smaller selection. [Official RF Lua setup](https://rotorflight.org/docs/setup/radio-setup/radio-setup-edgetx/edgetx-lua-scripts).
 
@@ -76,15 +76,7 @@ RF Tool derives its state events from `ARM`; RfStats requests its statistics thr
 
 The selected active list is `43,60,61,89,88,93,15,3,4,5,6,7,8,95,96,97,90,91,92,99,50`. It is compacted into the first 21 slots, followed by 19 zero slots. **Do not paste just the active selection as a complete CLI assignment.** The firmware defines 40 slots. Its CLI array parser neither explicitly clears the remaining slots nor safely guards its comma advancement for underfilled input. The audited 39-value README command was underfilled too. This is a source-level reliability finding; no FC crash was reproduced. Both replacement arrays explicitly specify all 40 slots. [Slot definitions](https://github.com/rotorflight/rotorflight-firmware/blob/118e9120260bb33f46df4f92052fb0e9fd4e9ebc/src/main/pg/telemetry.h#L36-L55), [CLI array parsing](https://github.com/rotorflight/rotorflight-firmware/blob/118e9120260bb33f46df4f92052fb0e9fd4e9ebc/src/main/cli/cli.c#L4783-L4854).
 
-The README uses this configuration, restoring default intervals as part of compacting the selection:
-
-```text
-feature TELEMETRY
-set crsf_telemetry_mode = CUSTOM
-set telemetry_sensors = 43,60,61,89,88,93,15,3,4,5,6,7,8,95,96,97,90,91,92,99,50,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
-set telemetry_interval = 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
-save
-```
+The [README setup commands](../README.md#4-configure-and-discover-telemetry) are the authoritative copyable configuration. They restore default intervals when compacting the selection.
 
 `telemetry_interval` is indexed by slot, so compacting a customized list without changing intervals can apply an old override to a different sensor. Resetting all 40 intervals to zero selects the upstream defaults and avoids that mismatch. Nonzero CUSTOM overrides affect the fast interval. Users who want to retain custom timing should remap their overrides to the compacted slots instead of using the all-zero interval line. Additional sensors used by other model functions should also be preserved explicitly. [Interval application](https://github.com/rotorflight/rotorflight-firmware/blob/118e9120260bb33f46df4f92052fb0e9fd4e9ebc/src/main/telemetry/crsf.c#L1362-L1378).
 
@@ -92,7 +84,7 @@ KSE resolves sensors by name, not FC list position; compaction needs no dashboar
 
 After saving, reconnect/restart the RF host and discover any missing sensors. Verify required values are live, including `ARM`, and check both dashboards' instruments, warnings, profile indicators, ground profile operations, diagnostic banner, chosen counter and RF adjustment announcements. In Auto, also confirm Electric/Nitro identification with transmitter naming disabled, then check name changes and reconnects before using the model. Removing an EdgeTX sensor from the radio's discovery list alone does not change the FC's configured stream. Conversely, old discovered names can remain listed after their transmission stops; confirm current values rather than relying on their names being present. Preserve radio source assignments instead of indiscriminately deleting all sensors.
 
-The README contains the selected configuration; no FC settings have been applied by this repository change, and the dashboard/RF Tool Lua code is unchanged.
+KSE resolves the existing sensor names; users apply the configuration through the [setup guide](../README.md#4-configure-and-discover-telemetry).
 
 ## Backward compatibility
 
@@ -100,7 +92,7 @@ Trimming optional selectors needs no ELRS 4.1-only feature and introduces no new
 
 RF 2.2's firmware `release/4.5.1` (`e69823a3c185cbf1b75fd2701e938e978591a36b`) and Lua 2.2.0 (`b9c7d4f5c3942a5b8ab987054f63d6e96edff791`) have the same mappings for **15 of the 16 minimum-feature selectors** and the same 40-slot layout. The exception is `97` / `BAT#`: the older firmware reserves that enum but does not transmit it in the CUSTOM table, and the older Lua decoder lacks it. A smaller telemetry list cannot supply battery-profile functionality that the installed firmware/tool package lacks. [Older enum](https://github.com/rotorflight/rotorflight-firmware/blob/e69823a3c185cbf1b75fd2701e938e978591a36b/src/main/telemetry/sensors.h#L40-L155), [older CUSTOM table](https://github.com/rotorflight/rotorflight-firmware/blob/e69823a3c185cbf1b75fd2701e938e978591a36b/src/main/telemetry/crsf.c#L701-L795), [older profile decoder](https://github.com/rotorflight/rotorflight-lua-scripts/blob/b9c7d4f5c3942a5b8ab987054f63d6e96edff791/src/SCRIPTS/RF2/rf2tlm.lua#L294-L310), [older slot definitions](https://github.com/rotorflight/rotorflight-firmware/blob/e69823a3c185cbf1b75fd2701e938e978591a36b/src/main/pg/telemetry.h#L36-L55).
 
-Keep the documented RF Tool 2.3 requirement for full features. Treat older firmware/package combinations as partial compatibility requiring separate verification of host APIs and unavailable-feature handling. This audit establishes the sensor mapping subset, not full KSE runtime support on RF 2.2. The current ARM timing policy is defined by the [compatibility review](KSE4-KSE5-optimization-review.md#arm-update-timing-contract): [KSE admission](../src/shared/msp_admission.lua) cannot admit MSP without `getSourceValue` currentness and recent update evidence, even though legacy `getValue` can support ordinary displays. Do not weaken that requirement to advertise broader compatibility.
+Keep the documented RF Tool 2.3 requirement for full features. Treat older firmware/package combinations as partial compatibility requiring separate verification of host APIs and unavailable-feature handling. This audit establishes the sensor mapping subset, not full KSE runtime support on RF 2.2. The current ARM timing policy is defined by the [compatibility review](compatibility.md#arm-update-timing-contract): [KSE admission](../src/shared/msp_admission.lua) cannot admit MSP without `getSourceValue` currentness and recent update evidence, even though legacy `getValue` can support ordinary displays. Do not weaken that requirement to advertise broader compatibility.
 
 ## Rotorflight scheduling and processing cost
 

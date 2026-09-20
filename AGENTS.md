@@ -2,35 +2,22 @@
 
 ## Model and collaboration
 
-Use **GPT-6 Astra with High reasoning** for the primary agent and every subagent. When a tool exposes these settings, select `model="gpt-6-astra"` and reasoning effort `high` explicitly. Apply the same configuration to resumed agents. If the environment cannot select or verify that configuration, disclose the limitation rather than claiming compliance or silently choosing another model.
-
 One primary agent owns the shared engine and integrates both generated dashboards. Use subagents for bounded upstream research, independent EdgeTX compatibility review, and RF safety/parity review when those can run alongside useful primary work. Give each reviewer the relevant files, pinned sources, slice scope and acceptance criteria. Parallel implementation is appropriate only for explicitly disjoint files; keep concurrent writers out of shared engine files and generated outputs. Integrate findings before dependent slices proceed.
 
-## Required context
+## Project rules
 
-- **Implement the optimization work:** read [the implementation plan](docs/implementation-plan.md) before editing. It defines the six slices, dependencies and completion gates. Continue through authorized slices without routine approval pauses.
-- **Change dashboard behavior, RF integration, rendering, storage or resource usage:** read the applicable findings, preservation rules and validation cases in [the compatibility review](docs/KSE4-KSE5-optimization-review.md) first. Its measurements and source lines are dated evidence; recheck the current functions and supported upstream versions before applying a finding.
-- **Change installation, options or user-visible behavior:** reconcile the affected [README](README.md) instructions with the resulting code. Preserve existing saved settings and data unless an explicit migration is part of the task.
-- **Edit dashboard code:** read [source and assembly rules](src/README.md). Author behavior under `src/shared` and presentation under `src/variants`; regenerate both complete `main.lua` outputs with `python3 tools/assemble.py` and require `--check` to pass. Run the affected contracts linked there.
+- Keep KSE4 and KSE5 functionally aligned through one authored engine, preserving their intentional layouts, palettes and theme-index mappings. For dashboard edits, follow the [source, assembly and validation rules](src/README.md).
+- Use the shared **800×480 reference geometry**, retaining operation at 480×320 and 480×272 and standalone dashboard-folder installation.
+- Preserve saved settings and user data unless an explicit migration is part of the task. Keep the original ten option positions, keys and types; append settings only on verified supported firmware, retaining the older descriptor and documented fallback.
+- Admit **no new KSE-owned MSP request unless disarm is confirmed**, including every profile-operation stage. For RF or ARM handling, follow the [RF policy](docs/compatibility.md#rf-admission-policy) and [ARM timing contract](docs/compatibility.md#arm-update-timing-contract). Keep RF Tool unmodified and preserve active upstream transactions, foreign work, normal telemetry, Smart Fuel, instruments, counters and alerts. Active requests may retry indefinitely; admission control is not per-send cancellation or a zero-traffic guarantee.
+- Treat EdgeTX's Lua implementation and official Rotorflight source as compatibility authorities. Verify APIs, MSP layouts and telemetry semantics against identified versions; include relevant commit-pinned citations in the change explanation.
 
-## Project invariants
-
-- Keep KSE4 and KSE5 functionally aligned. Maintain one authored functional engine; preserve their intentional layouts, palettes and theme-index mappings.
-- Use the shared **800×480 reference geometry**, retaining operation at 480×320 and 480×272. Preserve the original ten persisted option positions, keys and types, and the standalone dashboard-folder installation contract. Append new settings only on verified supported firmware; retain the older descriptor and documented fallback on older firmware.
-- Preserve normal telemetry, Smart Fuel semantics, flight instruments, counters and alerts. The selected policy stops **all new KSE-owned MSP admission unless disarm is confirmed** while retaining pre-arm diagnostics, ground configuration and post-flight updates. Keep RF Tool unmodified and preserve its initialization/recovery and foreign queue ownership. Already-active requests may continue upstream fragments/retries indefinitely; this is an accepted limitation, not a zero-traffic or measured-latency guarantee. See the review's feature-preservation contract for the exact boundaries.
-- Require valid, current ARM bit 0 disarmed with bounded recent-update evidence, a live link and ready provider, with no armed host contradiction, before every KSE MSP admission and profile-operation stage. Apply the review's [ARM update timing contract](docs/KSE4-KSE5-optimization-review.md#arm-update-timing-contract); EdgeTX's short fresh flag is an update observation, not continuous validity. Governor/headspeed do not restrict MSP admission; rotation does not block requests when disarm is confirmed. Add no extra disarm-settle gate; preserve existing FC-count and connection/rate intervals. Invalidate stale callbacks and remove safely identifiable pending owned work across arming, link loss, model/provider change and reset. Preserve active upstream transactions and foreign work; do not claim per-send cancellation through the unmodified RF Tool API.
-- Treat EdgeTX's Lua implementation and official Rotorflight source as compatibility authorities. Verify APIs, MSP layouts and telemetry semantics against identified versions; carry relevant commit-pinned citations into the change explanation.
+Keep the [user guide](README.md) aligned with changes to installation, options and user-visible behavior. For release archives, follow the [packaging guide](docs/release-packaging.md).
 
 ## Commit messages
 
-Start every commit with a plain-language title and opening paragraph explaining the problem, the change and its practical purpose. Kyle should be able to judge whether the commit belongs upstream without reading code or knowing internal names. Lead with the effect on dashboard users; for tooling or maintenance work, explain what it makes safer or easier to maintain.
+Start with a plain-language title and opening paragraph explaining the problem, change and practical purpose. Kyle should be able to judge whether the commit belongs upstream without reading code or knowing internal names. Lead with the effect on users; for maintenance work, explain what becomes safer or easier to maintain.
 
-Put implementation details, source citations, test results and limitations after that summary. Describe the commit as it stood at that point in history. When revising an earlier decision, identify the earlier commit and explain what is being walked back and what remains; distinguish a partial walk-back from a full revert.
+Put implementation details, citations, test results and limitations after that summary. Describe the commit as it stood at that point in history. When revising an earlier decision, identify its commit, what is being walked back and what remains; distinguish a partial walk-back from a full revert.
 
-## Completion and resource discipline
-
-Create compiler headroom before expanding helper-heavy code. Apply the review's resource gates to every compiled function in both outputs; distinguish project margins from upstream hard limits. Keep the checker and regression fixtures reproducible from a fresh checkout rather than depending on temporary audit files.
-
-Complete each slice with its relevant behavior/parity tests, EdgeTX compiler checks, resource comparison and independent review where specified by the plan. Report passed checks, unresolved findings and missing radio validation separately. Real-radio memory, timing and RF results require real-radio evidence; desktop compilation or mocks establish only their tested scope.
-
-Keep durable policy here, execution order in the implementation plan, and source evidence in the compatibility review. Update those authorities together when an accepted decision changes; keep task progress and completion logs out of this file.
+Keep task sequencing in implementation plans and completion reports in task/PR handoffs; keep this file focused on durable project policy.

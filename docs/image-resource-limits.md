@@ -1,4 +1,4 @@
-# Model-image limits: source evidence and recommendation
+# Model-image limits and source evidence
 
 Reviewed 2026-09-15. This note records the selected policy and its source-based rationale; it does not establish transmitter memory/timing results.
 
@@ -8,7 +8,7 @@ KSE's selected limits are **at most 130,560 pixels (`width × height`), at most 
 
 This preserves the old 480×272 policy's maximum decoded pixel count while admitting more useful shapes: 300×280, 272×480, 360×360 and 512×255. It intentionally does **not** admit 512×512. The 512-pixel edge rule is a project guard against extreme aspect ratios, not an EdgeTX hard limit. The 130,560-pixel budget is likewise a conservative continuation of the existing policy, not a proven maximum for every radio.
 
-The reported `TREX 700N.png` is 300×280, 37,276 bytes and RGBA8: 84,000 pixels, about 64% of the old maximum area. Its extra eight rows do not imply greater decoded-memory demand than an allowed 480×272 RGBA image. A rectangular 480×272 rule rejects it unnecessarily. Those file properties were supplied by the task's local inspection; the cost calculations below follow from upstream source.
+For example, a 300×280 image has 84,000 pixels, about 64% of the permitted area. Its extra eight rows do not imply greater decoded-memory demand than a 480×272 image with the same encoding; the area limit admits it without increasing the maximum decoded pixel count.
 
 ## Actual EdgeTX image path
 
@@ -32,9 +32,9 @@ These figures assume RGBA; KiB means 1,024 bytes. The last column excludes row o
 
 | Policy/example | Pixels | Retained 3P | Conversion overlap 7P | Ordinary RGBA8 reconstruction ≈8P |
 | --- | ---: | ---: | ---: | ---: |
-| Actual 300×280 | 84,000 | 246.1 KiB | 574.2 KiB | 656.3 KiB |
-| Recommended area budget, each edge ≤512 | 130,560 | 382.5 KiB | 892.5 KiB | 1,020 KiB |
-| Optional larger tier, ≤512×512 | 262,144 | 768 KiB | 1,792 KiB | 2,048 KiB |
+| Example 300×280 | 84,000 | 246.1 KiB | 574.2 KiB | 656.3 KiB |
+| Current area budget, each edge ≤512 | 130,560 | 382.5 KiB | 892.5 KiB | 1,020 KiB |
+| Unsupported comparison, 512×512 | 262,144 | 768 KiB | 1,792 KiB | 2,048 KiB |
 | 800×480 source | 384,000 | 1,125 KiB | 2,625 KiB | 3,000 KiB |
 
 The 512×512 tier roughly doubles the original pixel budget; an RGBA image alone occupies 37.5% of a 2 MiB LVGL pool after conversion. An 800×480 image occupies about 55%. Neither is justified as a common default merely because a supported screen has that resolution. Consider such tiers only after native-memory and lifecycle testing on the actual firmware/radio combinations. Do not add STB temporary usage to the LVGL pool alone: these are distinct allocations, although both contribute to overall RAM demand.
@@ -43,9 +43,9 @@ The 512×512 tier roughly doubles the original pixel budget; an RGBA image alone
 
 Encoded size and decoded pixel count measure different costs. A small compressed PNG can have a huge pixel area, and a poorly compressed image with a reasonable area can be large on disk. Retain both checks.
 
-- **100 KiB:** existing conservative file policy; no inspected decoder source establishes it as an upstream limit.
+- **100 KiB:** former conservative file policy; no inspected decoder source establishes it as an upstream limit.
 - **256 KiB:** a reasonable stricter file/IO budget, but excludes ordinary uncompressed BMP24/BMP32 near the recommended pixel maximum, and can exclude valid noisy PNGs.
-- **512 KiB:** recommended companion to the unchanged pixel budget. A basic BMP32 at 130,560 pixels needs approximately 522,294 bytes including a 54-byte header, just below 524,288. It also accommodates typical uncompressed RGBA8 PNG encodings at this area, but not every possible metadata-heavy export. It increases permitted SD input and PNG compressed-workspace cost compared with 100 KiB; it is not a cost-free change.
+- **512 KiB:** selected companion to the unchanged pixel budget. A basic BMP32 at 130,560 pixels needs approximately 522,294 bytes including a 54-byte header, just below 524,288. It also accommodates typical uncompressed RGBA8 PNG encodings at this area, but not every possible metadata-heavy export. It increases permitted SD input and PNG compressed-workspace cost compared with 100 KiB; it is not a cost-free change.
 - **1 MiB:** offers little reason for the common 130,560-pixel budget; principally admits additional metadata or less efficient encodings while raising allowed input/workspace. Reserve consideration for a measured larger-image tier.
 
 These limits are resource screening, **not a strict peak-memory bound or full image-integrity check**. STB can allocate for an IDAT chunk's declared length before discovering truncated file data, and accepts inflated data beyond the expected pixel stream. File/header checks cannot guarantee successful native decoding of arbitrary damaged files. [Chunk allocation](https://github.com/nothings/stb/blob/5c205738c191bcb0abc65c4febfa9bd25ff35234/stb_image.h#L5182-L5194), [raw-length acceptance](https://github.com/nothings/stb/blob/5c205738c191bcb0abc65c4febfa9bd25ff35234/stb_image.h#L4722-L4725).
