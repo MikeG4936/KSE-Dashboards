@@ -533,7 +533,7 @@ f=fuelFixture(2,2)
 eq(f.api.options[11][1],"FuelCheck","fuel option is last")
 eq(f.api.options[11][2],10,"duration uses native CHOICE option")
 eq(f.api.options[11][3],25,"new widget defaults to six-minute choice")
-eq(f.api.translate("FuelCheck","en"),"Fuel Check Timer","native settings label")
+eq(f.api.translate("FuelCheck","en"),"Fuel Check Timer - Nitro","native settings label")
 local durations=f.api.options[11][4]
 eq(#durations,121,"Off plus 120 quarter-minute choices")
 eq(durations[1],"Off","explicit Off label")

@@ -5869,11 +5869,11 @@ local OPTION_LABELS = {
   HeliType="Heli Type",
   BattRsv="Battery Reserve %",
   BattVoice="Battery Voice",
-  RxPackMin="Rx Pack Minimum",
-  RxPackMax="Rx Pack Maximum",
+  RxPackMin="Rx Pack Minimum - Nitro",
+  RxPackMax="Rx Pack Maximum - Nitro",
   MotorSw="Motor Switch",
   CountSrc="Flight Counter",
-  FuelCheck="Fuel Check Timer",
+  FuelCheck="Fuel Check Timer - Nitro",
 }
 
 local function translate(name, language)

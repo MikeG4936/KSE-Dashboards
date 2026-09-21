@@ -102,7 +102,7 @@ When moving from **StacyDashV4**, remove its widget from your telemetry screens 
 
 ## Settings
 
-Both dashboards have the same settings. Their colors and a few setting names differ. **Fuel Check Timer** requires EdgeTX 2.12 or newer.
+Both dashboards have the same settings. Their colors and a few setting names differ. **Fuel Check Timer - Nitro** requires EdgeTX 2.12 or newer.
 
 | Setting | Default | What it controls |
 | --- | --- | --- |
@@ -112,11 +112,11 @@ Both dashboards have the same settings. Their colors and a few setting names dif
 | **Heli Type** | Electric | Electric, Nitro or OMPHOBBY; [Auto Elec/Nitro](#auto-helicopter-type) for Rotorflight name-based selection; [OMP Auto](#one-radio-model-for-omp-m1-and-m2) for automatic M1/M2 selection. |
 | **Batt Reserve %** / **Battery Reserve %** | 20 | Battery reserve for Electric/OMP: with 20% reserve, the dashboard shows 0% when 20% remains. Range 0–50%; does not affect Nitro. |
 | **Battery Voice** | Off | Spoken battery percentages for Electric/OMP and repeating critical-battery warnings. Vibration warnings can still work with voice off. |
-| **Rx Pack Minimum** | 6.60 V | Nitro voltage shown as 0%; minimum allowed is 4.0 V. |
-| **Rx Pack Maximum** | 8.40 V | Nitro voltage shown as 100%; at most 9.0 V and at least 0.1 V above the minimum. |
+| **Rx Pack Minimum - Nitro** | 6.60 V | Nitro voltage shown as 0%; minimum allowed is 4.0 V. |
+| **Rx Pack Maximum - Nitro** | 8.40 V | Nitro voltage shown as 100%; at most 9.0 V and at least 0.1 V above the minimum. |
 | **Motor Switch** | SG | Your physical motor switch, such as `SG`. It also helps silence repeating warnings after the motor stops. Set up Timer 1 separately for KSE counting. |
 | **Flight Counter** | Rotorflight FC | Count stored by the helicopter, or KSE counting with Timer 1. KSE5 calls the FC choice **RotorFlight**. |
-| **Fuel Check Timer** | 06:00 | Nitro-only reminder after this much time on Timer 1. Use the wheel to select **Off** or **00:15–30:00** in 15-second steps. EdgeTX 2.12+ required. |
+| **Fuel Check Timer - Nitro** | 06:00 | Nitro-only reminder after this much time on Timer 1. Use the wheel to select **Off** or **00:15–30:00** in 15-second steps. EdgeTX 2.12+ required. |
 
 ## Using the features
 
@@ -132,7 +132,7 @@ The small transmitter battery icon follows EdgeTX 2.12.4's native **Radio Info**
 
 In Electric and OMP modes, **Battery Reserve %** sets aside part of the pack: with a 20% reserve, the dashboard shows 0% when the helicopter reports 20% remaining. Rotorflight Smart Fuel is supported. If battery percentage is unavailable, KSE estimates it from voltage when possible.
 
-In Nitro mode, set **Rx Pack Minimum** and **Rx Pack Maximum** for your receiver battery. These are the voltages shown as 0% and 100%. Nitro does not use battery profiles.
+In Nitro mode, set **Rx Pack Minimum - Nitro** and **Rx Pack Maximum - Nitro** for your receiver battery. These are the voltages shown as 0% and 100%. Nitro does not use battery profiles.
 
 **Battery Voice** turns on spoken warnings. Moving your selected Motor Switch can silence the repeating critical-battery voice warning. Keep your normal radio battery alarms configured too.
 
@@ -162,7 +162,7 @@ The dashboard clock shows **EdgeTX Timer 1**, even with Rotorflight FC counting 
 
 ### Nitro fuel-check reminder
 
-Open **Fuel Check Timer**, scroll to a duration such as **06:00** or **06:30**, and select it. The list runs from **00:15** to **30:00** in 15-second steps. Choose **Off** to disable the reminder.
+Open **Fuel Check Timer - Nitro**, scroll to a duration such as **06:00** or **06:30**, and select it. The list runs from **00:15** to **30:00** in 15-second steps. Choose **Off** to disable the reminder.
 
 After updating from the earlier text or minutes-only setting, select your duration again. If the field shows **-1**, the reminder is off until you choose a duration or **Off** from the list. Your other widget settings stay unchanged.
 
@@ -281,7 +281,7 @@ The first five names are required. In manual **OMPHOBBY** mode, include **M1** o
 | Battery profiles do not open | Use Electric mode, connect and disarm the helicopter, and check that `ARM` is updating. Set a capacity above zero for each battery profile in Rotorflight. |
 | `UPDATE EDGETX FOR PROFILE PICKER` | Update EdgeTX to a version supported by your radio and the installed RF Tool package. |
 | The dashboard clock does not run | Configure **EdgeTX Timer 1** to run from your motor switch, even if you use Rotorflight FC counting. |
-| No Nitro fuel reminder | Check that KSE shows Nitro, a duration is selected in **Fuel Check Timer** rather than **Off**, and Timer 1 is running. Reselect the duration after updating from the older text setting. Reset Timer 1 before the flight; starting KSE after the selected time does not replay the reminder. Copy the complete dashboard folder for the spoken clip; if it is missing, KSE uses two beeps. Check the radio's sound/haptic settings, and close standalone Lua tools during flight. |
+| No Nitro fuel reminder | Check that KSE shows Nitro, a duration is selected in **Fuel Check Timer - Nitro** rather than **Off**, and Timer 1 is running. Reselect the duration after updating from the older text setting. Reset Timer 1 before the flight; starting KSE after the selected time does not replay the reminder. Copy the complete dashboard folder for the spoken clip; if it is missing, KSE uses two beeps. Check the radio's sound/haptic settings, and close standalone Lua tools during flight. |
 | FC count is unavailable | Connect and disarm the helicopter. Check that `ARM` is updating, model statistics are enabled, and Rotorflight 2.3 plus its Lua package are installed. |
 | KSE count does not advance | Set Timer 1 to run with the motor switch. Let it run for the chosen minimum time and reset it between flights. OMP always uses this counter. |
 | Battery percentage is missing or looks wrong | For Electric Rotorflight models, first check the battery readings and settings on Configurator’s **Power** tab; see [battery and SmartFuel setup](https://rotorflight.org/docs/configurator/tabs/power). If those look correct, check the radio’s sensors and KSE’s **Battery Reserve %**, which changes the displayed percentage. For OMP, check the [OMP sensor list and model name](#omphobby-telemetry). |
