@@ -10,6 +10,7 @@ local function fixture(selection,counter,embedded)
   __mock.now=1000; __mock.modelName="Shared Heli";__mock.modelFilename="shared.yml"
   model.getInfo=function() return {name=__mock.modelName,filename=__mock.modelFilename} end
   __mock.timer={start=0,value=0};__mock.values={};__mock.events={}
+  __mock.ompSensors=nil
   fs.files={};fs.faults={};fs.online=true
   local t={rssi=0,builds=0,labels={},requests={},hostCalls=0,queueCalls=0}
   local id=100
@@ -20,6 +21,7 @@ local function fixture(selection,counter,embedded)
     local item={id=id,value=value}
     __mock.values[name]=item;__mock.values[id]=item
   end
+  if selection==3 or selection==5 then __setOmpSources(3,3.8) end
   getRSSI=function() return t.rssi end
   local readSource=getSourceValue
   -- The inherited readSource is restored after each fixture to avoid chains.
@@ -51,12 +53,11 @@ local function fixture(selection,counter,embedded)
     clear=function() error("KSE must not clear RF transport") end}
   rf2.mspQueue=t.queue
   t.api=dofile(dashboardPath);t.audit=t.api.audit
-  t.opts={}
-  for _,option in ipairs(t.api.options) do t.opts[option[1]]=option[3] end
+  t.opts=t.api.fixture.defaults()
   t.opts.HeliType=selection or 4;t.opts.CountSrc=counter or 1;t.opts.MotorSw=99
-  t.widget=t.api.create({x=0,y=0,w=LCD_W,h=LCD_H},t.opts)
+  t.widget=t.api.fixture.create({x=0,y=0,w=LCD_W,h=LCD_H},t.opts)
   if embedded then t.audit.owner.host(t.host,rf2) end
-  t.api.update(t.widget,t.opts)
+  t.api.fixture.apply(t.widget,t.opts)
   function t:connect(name)
     self.rssi=100;self.host.state="disarmed";self.provider.modelName=name
   end
@@ -91,9 +92,9 @@ local t=fixture()
 local a=t.audit
 local auto=a.AUTO_HELI
 local opts=t.opts
-eq(#t.api.options,11,"fuel setting appended after original ten")
-eq(table.concat(t.api.options[4][4],","),"Electric,Nitro,OMPHOBBY,Auto Elec/Nitro,OMP Auto","choice values")
-eq(t.api.options[4][3],1,"Electric default")
+eq(#t.api.options,0,"native descriptor has no configuration")
+eq(table.concat(t.api.fixture.heliTypes,","),"Electric,Nitro,Auto Elec/Nitro,OMPHOBBY","choice values")
+eq(t.api.fixture.defaults().HeliType,1,"Electric default")
 for name,expected in pairs({["TREX 700N"]=2,["RAW 700N"]=2,["RAW 700n  "]=2,["RAW nItRo\t"]=2,
   N=2,Nitro=2,Goblin=2,RAWN=2,RAWNitro=2,["RAW 700"]=1,["Nitro 700E"]=1,["OMP M2"]=1,[""]=1}) do
   eq(auto.infer(name),expected,"literal suffix "..name)
@@ -125,7 +126,7 @@ eq(a.name(),"RAW 700N","dropout retains FC identity")
 t.rssi=100;t:settle(true)
 eq(a.A.rxDeadVoiceLatched,true,"brief dropout preserves latch")
 eq(t.builds,builds,"brief dropout avoids rebuild")
-t:disconnect();t:step(true);opts.Theme=2;t.api.update(t.widget,opts)
+t:disconnect();t:step(true);opts.Theme=2;t.api.fixture.apply(t.widget,opts)
 eq(a.OPT.heliType,2,"theme edit retains disconnected Nitro")
 eq(auto.ready,false,"theme edit cannot resolve identity")
 t.host.state="initializing";t.rssi=100;t.provider.modelName="Old Electric";t:settle(false)
@@ -152,20 +153,20 @@ t:settle(false);eq(auto.name,"Candidate Nitro","stable candidate accepted")
 a.A.rxDeadVoiceLatched=true;t:connect("Other Nitro");t:step(false);t:settle(false)
 eq(a.A.rxDeadVoiceLatched,false,"same-type new identity resets session")
 for selected=1,3 do
-  opts.HeliType=selected;t.api.update(t.widget,opts)
+  opts.HeliType=selected;t.api.fixture.apply(t.widget,opts)
   t:connect(selected==2 and "RAW Electric" or "RAW Nitro");t:settle(true)
   eq(a.OPT.heliType,selected,"manual mode overrides FC")
   eq(a.OPT.autoHeliType,false,"manual disables Auto")
 end
-opts.CountSrc=2;opts.HeliType=3;t.api.update(t.widget,opts)
+opts.CountSrc=2;opts.HeliType=5;t.api.fixture.apply(t.widget,opts)
 eq(a.OPT.flightCounter,1,"OMP forces effective local counter")
 eq(opts.CountSrc,2,"OMP preserves saved FC preference")
-opts.HeliType=4;t.api.update(t.widget,opts)
+opts.HeliType=4;t.api.fixture.apply(t.widget,opts)
 eq(a.OPT.flightCounter,2,"Auto restores saved FC counter")
 eq(auto.ready,false,"re-enabling Auto reconfirms")
 t:settle(true);eq(a.OPT.heliType,2,"Auto after OMP")
 for _,invalid in ipairs({0,6,-1,1.5,3.5,4.5,5.5}) do
-  opts.HeliType=invalid;t.api.update(t.widget,opts)
+  opts.HeliType=invalid;t.api.fixture.apply(t.widget,opts)
   eq(a.OPT.heliType,1,"invalid choice becomes Electric "..tostring(invalid))
   eq(a.OPT.autoHeliType,false,"fraction cannot enable Auto")
 end
@@ -269,7 +270,7 @@ eq(ra.owner.current(oldModelWidget),false,"previous model widget loses ownership
 eq(oldModelWidget.kseInitialized,false,"previous model background retires the old session")
 eq(ra.A.rxDeadVoiceLatched,true,"previous model background cannot start the new session")
 -- EdgeTX recreates widgets when selecting a saved model while Lua globals live on.
-replaced.widget=replaced.api.create({x=0,y=0,w=LCD_W,h=LCD_H},replaced.opts)
+replaced.widget=replaced.api.fixture.create({x=0,y=0,w=LCD_W,h=LCD_H},replaced.opts)
 replaced:step(true,1)
 eq(ra.owner.current(replaced.widget),true,"new model foreground owns before lease expiry")
 eq(ra.AUTO_HELI.ready,false,"recreated model widget restarts confirmation")
@@ -419,7 +420,9 @@ for _,mode in ipairs({1,2,4}) do
     f:step(true,1);footer(f,nil,"replacement provider")
   end
 end
-local omp=fixture(3,2);omp:connect("M2 Fixture");omp:settle(true)
+local omp=fixture(5,2);omp:connect("Radio naming does not identify OMP");omp:settle(true)
+eq(omp.audit.OMP_AUTO.ready,true,"OMP footer fixture confirms live voltage identity")
+eq(omp.audit.name(),"OMP M2","OMP footer identifies from ratio")
 footer(omp,nil,"OMP does not display RF state")
 eq(#omp.requests,0,"OMP footer does not start RF work")
 -- Fuel reminder uses the real Timer 1 and lifecycle in both counter modes.
@@ -445,7 +448,7 @@ for _,counter in ipairs({1,2}) do
   for _,selection in ipairs({2,4}) do
     local f=fuelFixture(selection,counter)
     eq(f.audit.OPT.heliType,2,"fuel test confirms Nitro")
-    eq(#f.api.options,11,"fuel setting retains original ten options")
+    eq(f.api.fixture.defaults().FuelCheck,25,"canonical default is six-minute step")
     f.host.state="armed";__mock.values.ARM.value=1;f:step(false)
     local requests=#f.requests
     timerStep(f,359);f:settle(false)
@@ -456,14 +459,14 @@ for _,counter in ipairs({1,2}) do
     eq(__mock.hapticFlags,0,"fuel does not replace urgent haptics")
     eq(#f.requests,requests,"fuel threshold while armed admits no MSP")
     timerStep(f,370,nil,true)
-    f.opts.Theme=2;f.api.update(f.widget,f.opts);f:step(true)
-    f.opts.CountSrc=counter==1 and 2 or 1;f.api.update(f.widget,f.opts)
+    f.opts.Theme=2;f.api.fixture.apply(f.widget,f.opts);f:step(true)
+    f.opts.CountSrc=counter==1 and 2 or 1;f.api.fixture.apply(f.widget,f.opts)
     f:step(false)
     f.rssi=0;f:step(false);f.rssi=100;f:settle(false)
     f:disconnect();f:step(false);f:connect("RAW Nitro");f:settle(false)
     eq(fuelEvents("file:fuel.wav"),1,"theme/counter/link/reconnect cannot repeat reminder")
-    f.opts.HeliType=1;f.api.update(f.widget,f.opts);f:step(false)
-    f.opts.HeliType=selection;f.api.update(f.widget,f.opts);f:settle(false)
+    f.opts.HeliType=1;f.api.fixture.apply(f.widget,f.opts);f:step(false)
+    f.opts.HeliType=selection;f.api.fixture.apply(f.widget,f.opts);f:settle(false)
     eq(fuelEvents("file:fuel.wav"),1,"type toggles cannot rearm reminder")
     timerStep(f,0);timerStep(f,361,nil,true)
     eq(fuelEvents("file:fuel.wav"),2,"timer reset rearms one reminder")
@@ -473,6 +476,7 @@ for _,counter in ipairs({1,2}) do
 end
 for _,selection in ipairs({1,3,5}) do
   local f=fuelFixture(selection,2)
+  if selection~=1 then eq(f.audit.OMP_AUTO.ready,true,"OMP suppression uses a confirmed identity") end
   timerStep(f,360);timerStep(f,400)
   eq(fuelEvents("file:fuel.wav"),0,"Electric/OMP never get fuel speech")
   eq(fuelEvents("haptic:15"),0,"Electric/OMP never get fuel vibration")
@@ -492,10 +496,9 @@ timerStep(f,0);timerStep(f,360)
 eq(fuelEvents("file:fuel.wav"),1,"late startup becomes eligible after reset")
 -- A replacement widget, including the other variant, does not replay the run.
 local replacement=dofile(otherDashboardPath)
-local replacementOptions={}
-for _,option in ipairs(replacement.options) do replacementOptions[option[1]]=option[3] end
+local replacementOptions=replacement.fixture.defaults()
 replacementOptions.HeliType=2;replacementOptions.CountSrc=2
-local other=replacement.create({x=0,y=0,w=LCD_W,h=LCD_H},replacementOptions)
+local other=replacement.fixture.create({x=0,y=0,w=LCD_W,h=LCD_H},replacementOptions)
 __mock.now=__mock.now+501;replacement.refresh(other,nil,nil)
 eq(fuelEvents("file:fuel.wav"),1,"widget takeover cannot replay expired timer")
 f=fuelFixture(2,2)
@@ -527,46 +530,32 @@ eq(fuelEvents("haptic:15"),1,"missing clip retains vibration")
 timerStep(f,370)
 eq(fuelEvents("tone:1500"),1,"fallback cannot loop")
 playTone=nil
--- Slot 11 changes deliberately from a duration string to a native choice;
--- the original ten settings stay in place. Native type migration resets it.
+-- Internal menu steps map to elapsed time independently of any native options.
 f=fuelFixture(2,2)
-eq(f.api.options[11][1],"FuelCheck","fuel option is last")
-eq(f.api.options[11][2],10,"duration uses native CHOICE option")
-eq(f.api.options[11][3],25,"new widget defaults to six-minute choice")
-eq(f.api.translate("FuelCheck","en"),"Fuel Check Timer - Nitro","native settings label")
-local durations=f.api.options[11][4]
-eq(#durations,121,"Off plus 120 quarter-minute choices")
-eq(durations[1],"Off","explicit Off label")
-eq(durations[25],"06:00","default choice displays six minutes")
-eq(durations[121],"30:00","last choice displays thirty minutes")
-for i,label in ipairs(durations) do
-  f.opts.FuelCheck=i;f.api.update(f.widget,f.opts)
-  local seconds=(i-1)*15
-  eq(f.audit.OPT.fuelCheckSeconds,seconds,"choice maps to elapsed seconds")
-  if i>1 then
-    eq(label,string.format("%02d:%02d",math.floor(seconds/60),seconds%60),
-       "choice labels stay in quarter-minute order")
-  end
+eq(f.api.fixture.defaults().FuelCheck,25,"default is six-minute step")
+for i=1,121 do
+  f.opts.FuelCheck=i;f.api.fixture.apply(f.widget,f.opts)
+  eq(f.audit.OPT.fuelCheckSeconds,(i-1)*15,"menu step maps to elapsed seconds")
 end
-f.opts.FuelCheck=1;f.api.update(f.widget,f.opts)
+f.opts.FuelCheck=1;f.api.fixture.apply(f.widget,f.opts)
 timerStep(f,359);timerStep(f,360);timerStep(f,1801)
 eq(fuelEvents("file:fuel.wav"),0,"zero duration disables speech")
 eq(fuelEvents("haptic:15"),0,"zero duration disables vibration")
-f.opts.FuelCheck=25;f.api.update(f.widget,f.opts);f:step(false)
+f.opts.FuelCheck=25;f.api.fixture.apply(f.widget,f.opts);f:step(false)
 eq(fuelEvents("file:fuel.wav"),0,"enabling after threshold does not backfill")
 timerStep(f,0);timerStep(f,360)
 eq(fuelEvents("file:fuel.wav"),1,"enabled setting works after reset")
 f=fuelFixture(4,1)
-f.opts.FuelCheck=27;f.api.update(f.widget,f.opts)
+f.opts.FuelCheck=27;f.api.fixture.apply(f.widget,f.opts)
 timerStep(f,389);eq(fuelEvents("file:fuel.wav"),0,"custom duration not early")
 timerStep(f,390);eq(fuelEvents("file:fuel.wav"),1,"minutes and seconds threshold")
 timerStep(f,400);eq(fuelEvents("file:fuel.wav"),1,"custom duration does not repeat")
-f.opts.FuelCheck=10;f.api.update(f.widget,f.opts);f:step(false)
+f.opts.FuelCheck=10;f.api.fixture.apply(f.widget,f.opts);f:step(false)
 eq(fuelEvents("file:fuel.wav"),1,"lowering past threshold does not backfill")
 timerStep(f,0);timerStep(f,135)
 eq(fuelEvents("file:fuel.wav"),2,"changed duration rearms after reset")
 for _,duration in ipairs({{2,15},{5,60},{26,375},{120,1785},{121,1800}}) do
-  f=fuelFixture(2,2);f.opts.FuelCheck=duration[1];f.api.update(f.widget,f.opts)
+  f=fuelFixture(2,2);f.opts.FuelCheck=duration[1];f.api.fixture.apply(f.widget,f.opts)
   eq(f.audit.OPT.fuelCheckSeconds,duration[2],"duration selected exactly")
   timerStep(f,0);timerStep(f,duration[2]-1)
   eq(fuelEvents("file:fuel.wav"),0,"duration boundary not early")
@@ -574,7 +563,7 @@ for _,duration in ipairs({{2,15},{5,60},{26,375},{120,1785},{121,1800}}) do
   eq(fuelEvents("file:fuel.wav"),1,"duration boundary works")
 end
 f=fuelFixture(2,2)
-f.opts.FuelCheck=4;f.api.update(f.widget,f.opts)
+f.opts.FuelCheck=4;f.api.fixture.apply(f.widget,f.opts)
 timerStep(f,600,600);timerStep(f,556,600)
 eq(fuelEvents("file:fuel.wav"),0,"seconds-only countdown not early")
 timerStep(f,555,600)
@@ -584,44 +573,22 @@ eq(fuelEvents("file:fuel.wav"),2,"seconds-only countdown reset")
 f=fuelFixture(2,2)
 for _,invalid in ipairs({0,-1,1.5,25.5,122,360,math.huge,-math.huge,0/0,
                          "", " ", "25", "06:00", "06:30", true, false, {}}) do
-  f.opts.FuelCheck=invalid;f.api.update(f.widget,f.opts)
-  eq(f.audit.OPT.fuelCheckSeconds,0,"invalid or legacy choice disables reminder")
+  f.opts.FuelCheck=invalid;f.api.fixture.apply(f.widget,f.opts)
+  eq(f.audit.OPT.fuelCheckSeconds,0,"invalid internal duration disables reminder")
   timerStep(f,0);timerStep(f,390)
 end
 eq(fuelEvents("file:fuel.wav"),0,"invalid duration never announces")
 eq(fuelEvents("haptic:15"),0,"invalid duration never vibrates")
--- A native type reset can supply zero before defaults have been parsed; after
--- defaults are parsed it can supply 25. Neither reinterprets the old text.
-f.opts.FuelCheck=0;f.api.update(f.widget,f.opts)
-eq(f.audit.OPT.fuelCheckSeconds,0,"migrated zero field stays safely off")
-f.opts.FuelCheck=27;f.api.update(f.widget,f.opts)
-timerStep(f,0);timerStep(f,390)
-eq(fuelEvents("file:fuel.wav"),1,"reselected duration works after migration")
-f.opts.FuelCheck=25;f.api.update(f.widget,f.opts);f:step(false)
-eq(fuelEvents("file:fuel.wav"),1,"migrated default cannot backfill overdue reminder")
-f.opts.FuelCheck=nil;f.api.update(f.widget,f.opts)
-eq(f.audit.OPT.fuelCheckSeconds,360,"missing old-firmware setting uses six minutes")
-local originalVersion=getVersion
-for _,ver in ipairs({{2,11,5,10},{2,12,1,11},{2,12,4,11},{3,0,0,11}}) do
-  getVersion=function() return "test", "radio", ver[1],ver[2],ver[3],"EdgeTX" end
-  f=fuelFixture(2,2)
-  eq(#f.api.options,ver[4],"version-compatible option count")
-  eq(f.api.options[10][1],"CountSrc","original last option retains its slot")
-  if ver[4]==10 then
-    eq(f.opts.FuelCheck,nil,"old firmware has no unsupported option")
-    timerStep(f,360)
-    eq(fuelEvents("file:fuel.wav"),1,"old firmware retains fixed six-minute reminder")
-  end
-end
-getVersion=nil;f=fixture(2,2)
-eq(#f.api.options,10,"missing version API keeps conservative descriptor")
-getVersion=originalVersion
+-- Missing fixture values select the canonical default; no legacy file or
+-- native Widget Settings value is consulted by these domain transitions.
+f.opts.FuelCheck=nil;f.api.fixture.apply(f.widget,f.opts)
+eq(f.audit.OPT.fuelCheckSeconds,360,"canonical default uses six minutes")
 
 -- Radio regression: switch a connected TREX 700N from Electric to Auto.
 -- Default firmware has no optional string metatable (asserted above).
 local switched=fixture(1,2)
 switched:connect("TREX 700N");switched:settle(true)
-switched.opts.HeliType=4;switched.api.update(switched.widget,switched.opts)
+switched.opts.HeliType=4;switched.api.fixture.apply(switched.widget,switched.opts)
 switched:settle(true)
 eq(switched.audit.AUTO_HELI.ready,true,"Electric-to-Auto confirms TREX name")
 eq(switched.audit.OPT.heliType,2,"Electric-to-Auto selects Nitro")

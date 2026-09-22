@@ -32,10 +32,11 @@ end
 updateUiState=function() __ownershipMetrics.draw=__ownershipMetrics.draw+1 end
 batteryProfiles.service=function() __ownershipMetrics.rf=__ownershipMetrics.rf+1 end
 """
-    exports = ("return { audit={OPT=OPT,A=A,D=D,S=S,G=G,store=flightStore,"
+    exports = ("return { fixture=FixtureSettings, audit={OPT=OPT,A=A,D=D,S=S,G=G,store=flightStore,"
                "count=getFlightCount,profiles=batteryProfiles,owner=WidgetOwner,"
                "metrics=__ownershipMetrics},")
-    return source[:marker] + hooks + source[marker:].replace("return {", exports, 1)
+    return (source[:marker] + "\n" + ROOT.joinpath("tests/behavior/settings_fixture.lua").read_text()
+            + hooks + source[marker:].replace("return {", exports, 1))
 
 
 def main():

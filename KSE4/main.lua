@@ -451,8 +451,8 @@ local A = {
   lastDataTick = -1,
 }
 local HELI_ELECTRIC, HELI_NITRO, HELI_OMPHOBBY = 1, 2, 3
--- Append Auto Elec/Nitro without changing the three persisted manual CHOICE values.
--- Keep name inference separate so another naming provider can be added later.
+-- Stable saved IDs are independent of menu order. Rotorflight name inference
+-- and OMP telemetry identification remain separate providers.
 local AUTO_HELI = {
   option=4, confirmTicks=30, ready=false, name=nil,
   status="WAITING FOR FC NAME",
@@ -559,7 +559,6 @@ local SAFETY = {
 -- Source metadata distinguishes a missing zero from a live value. This matters
 -- most for Smart Fuel: Bat%=0 is meaningful only when a flight pack is actually
 -- present, while positive current values can stand on their own.
-local txIsLiIon = false
 local F = {}
 local RESOLVED = {}
 -- END SHARED state.lua
@@ -587,21 +586,15 @@ local function getValSrc(srcId)
   if type(v) == "table" then v = v.value end
   return tonumber(v)
 end
--- Parse an Rx-pack voltage typed as text ("6.60"), tolerant of whether EdgeTX
--- text entry offers a ".", and backward-compatible with the old integer scale:
---   <=15 -> volts as typed (6.6) ; 16-150 -> old tenths (66->6.6) ; >150 -> hundredths (660->6.6)
-local function parseVolt(s, default)
-  local str = string.match(tostring(s or ""), "^%s*(.-)%s*$")
-  local validText = string.match(str, "^%d+$")
-                    or string.match(str, "^%d+[.,]%d+$")
-                    or string.match(str, "^[.,]%d+$")
-  if not validText then return default end
-  str = string.gsub(str, ",", ".")
-  local v = tonumber(str)
-  if not v or v <= 0 then return default end
-  if v > 150 then return v / 100 end
-  if v > 15  then return v / 10  end
-  return v
+-- Settings store and numeric editor use volts with exactly two decimals.
+local function parseVolt(value, default)
+  if type(value)~="string" or not string.match(value,"^%d%.%d%d$") then return default end
+  return tonumber(value) or default
+end
+local function validRxRange(low, high)
+  -- EdgeTX uses 32-bit floats: 8.40 - 8.30 can be just below 0.10.
+  return low ~= nil and high ~= nil and low >= 4 and high <= 9
+         and high - low + 0.000001 >= 0.1
 end
 local getFieldInfoFn = getFieldInfo
 local getSourceNameFn = getSourceName
@@ -609,10 +602,8 @@ local function isPhysicalMotorSource(src)
   local id = tonumber(src)
   if not id or id == 0 then return false end
 
-  local inspected = false
   if getFieldInfoFn then
     local ok, info = pcall(getFieldInfoFn, id)
-    inspected = ok
     if ok and type(info) == "table" then
       local name = string.upper(tostring(info.name or ""))
       local desc = string.upper(tostring(info.desc or ""))
@@ -623,15 +614,12 @@ local function isPhysicalMotorSource(src)
   end
   if getSourceNameFn then
     local ok, name = pcall(getSourceNameFn, id)
-    inspected = inspected or ok
     if ok and string.match(string.upper(tostring(name or "")), "^S[A-Z]$") then
       return true
     end
   end
 
-  -- Older supported firmwares may not expose source inspection. A configured,
-  -- readable SOURCE is still safer than silently falling back to a channel.
-  return not inspected
+  return false
 end
 -- BEGIN VARIANT option_theme.lua
 G.applyOptionTheme = function(rawTheme)
@@ -639,36 +627,29 @@ G.applyOptionTheme = function(rawTheme)
   applyTheme(THEME_NAMES[rawTheme] or "dark")
   C_ACCENT = themeAccent or DEFAULT_ACCENT
 end
--- END VARIANT option_theme.lua
-function G.addFuelOption(options)
-  -- EdgeTX 2.11 stores only ten widget settings; 2.12 increases this to 50.
-  -- Keep the older descriptor unchanged instead of relying on truncation.
-  if not getVersion then return end
-  local _, _, major, minor = getVersion()
-  if type(major) == "number" and type(minor) == "number"
-     and (major > 2 or (major == 2 and minor >= 12)) then
-    -- Build once with the descriptor; native settings handle wheel selection.
-    local durations = {"Off"}
-    for seconds = 15, 1800, 15 do
-      durations[#durations+1] = string.format("%02d:%02d",
-                                            math.floor(seconds / 60), seconds % 60)
-    end
-    options[#options+1] = {"FuelCheck", CHOICE, 25, durations} -- 06:00
+
+-- Transparent dashboard themes use their corresponding opaque settings palette.
+G.settingsPalette = function(rawTheme)
+  local name=THEME_NAMES[rawTheme] or "dark"
+  local p=COLOR_THEMES[name]
+  if p then
+    return {bg=lcd.RGB(p.bg[1],p.bg[2],p.bg[3]),
+      panel=lcd.RGB(p.tile[1],p.tile[2],p.tile[3]),
+      dim=lcd.RGB(p.dim[1],p.dim[2],p.dim[3]),
+      accent=lcd.RGB(p.accent[1],p.accent[2],p.accent[3]), text=lcd.RGB(255,255,255)}
   end
+  local light=name=="light"
+  return {bg=light and lcd.RGB(255,255,255) or lcd.RGB(0,0,0),
+    panel=light and lcd.RGB(242,242,242) or lcd.RGB(13,14,17),
+    dim=light and lcd.RGB(110,110,110) or lcd.RGB(124,134,148),
+    text=light and lcd.RGB(0,0,0) or lcd.RGB(255,255,255),
+    accent=lcd.RGB(95,211,188)}
 end
+-- END VARIANT option_theme.lua
 local function applyOptions(opts)
   opts = opts or {}
   G.applyOptionTheme(tonumber(opts.Theme) or 0)
-  local rawBatt = tonumber(opts and opts.TxBatt) or 0
-  txIsLiIon = (rawBatt == 2)
-  local rawDur = tonumber(opts and (opts.MinFlight
-                                    or opts["KSE Counter Min (sec)"]
-                                    or opts["Min. Flight Time (sec)"]
-                                    or opts.TopMinDur))
-                 or TOPBAR_MIN_DUR_DEFAULT
-  if rawDur < 0 then rawDur = math.abs(rawDur) end
-  if rawDur < 1 then rawDur = 1 end
-  minFlightDur = rawDur
+  minFlightDur = math.max(1, math.min(120, tonumber(opts.MinFlight) or TOPBAR_MIN_DUR_DEFAULT))
   OPT.flightCounter = FC.ROTORFLIGHT
   OPT.simTelemetry = false
   local sgInfo = type(getFieldInfo) == "function" and getFieldInfo("SG") or nil
@@ -677,13 +658,12 @@ local function applyOptions(opts)
   if opts then
     -- The Motor Switch is the only mapped source. Rotorflight Gov/Hspd or OMP
     -- RPM telemetry validates what a movement means; other sensors auto-detect.
-    SRC.motorSwitch = opts.MotorSw or opts["Motor Switch"]
-                      or defaultMotorSwitch
-    -- Append OMP Auto=5 without moving existing choices or option slots.
+    SRC.motorSwitch = opts.MotorSw or defaultMotorSwitch
+    -- OMP Auto resolves to the shared OMP telemetry implementation.
     -- OMPHOBBY shares the percentage bar but has its own telemetry contract.
-    local bb = tonumber(opts.HeliType or opts["Heli Type"]) or 1
+    local bb = tonumber(opts.HeliType) or 1
     if not (bb >= 1 and bb <= OMP_AUTO.option) or bb > math.floor(bb) then bb = 1 end
-    OPT.ompAuto = bb == OMP_AUTO.option
+    OPT.ompAuto = bb == OMP_AUTO.option or bb == HELI_OMPHOBBY
     if OPT.ompAuto then bb = HELI_OMPHOBBY end
     local automatic = bb == AUTO_HELI.option
     if automatic then
@@ -696,22 +676,18 @@ local function applyOptions(opts)
     OPT.autoHeliType = automatic
     OPT.heliType = bb
     OPT.battBarMode = (bb == HELI_NITRO) and 1 or 0
-    OPT.reservePct  = tonumber(opts.BattRsv or opts["Batt Reserve %"]) or 20
+    OPT.reservePct  = tonumber(opts.BattRsv) or 20
     if OPT.reservePct < 0 then OPT.reservePct = 0 end
     if OPT.reservePct > 50 then OPT.reservePct = 50 end
     OPT.battVoice   = (opts.BattVoice == 1 or opts.BattVoice == true)
-    local fuelSeconds = 360 -- fixed reminder on older ten-option firmware
-    if opts.FuelCheck ~= nil then
-      local choice = opts.FuelCheck
-      -- EdgeTX resets a saved slot when its type changes. Until reselected,
-      -- zero/invalid indices stay Off; do not reinterpret old duration text.
-      fuelSeconds = type(choice) == "number" and choice >= 1 and choice <= 121
-                    and choice <= math.floor(choice) and (choice - 1) * 15 or 0
-    end
+    -- The editor uses one-based 15-second steps: 1=Off, 25=06:00.
+    local choice = opts.FuelCheck
+    if choice == nil then choice = 25 end
+    local fuelSeconds = type(choice) == "number" and choice >= 1 and choice <= 121
+                        and choice <= math.floor(choice) and (choice - 1) * 15 or 0
     if OPT.fuelCheckSeconds ~= fuelSeconds then A.fuelCheckArmed = nil end
     OPT.fuelCheckSeconds = fuelSeconds
-    -- CountSrc retains its original slot and persisted type.
-    local countMode = tonumber(opts.CountSrc or opts["Flight Counter"])
+    local countMode = tonumber(opts.CountSrc)
     if countMode ~= FC.RADIO
        and countMode ~= FC.ROTORFLIGHT then
       countMode = FC.ROTORFLIGHT
@@ -721,10 +697,7 @@ local function applyOptions(opts)
     local parsedMax = parseVolt(opts.RxPackMax or "8.40", nil)
     OPT.rxPackMin = parsedMin or 6.6
     OPT.rxPackMax = parsedMax or 8.4
-    OPT.rxPackValid = parsedMin ~= nil and parsedMax ~= nil
-                       and parsedMin >= SAFETY.rxPackMinAllowed
-                       and parsedMax <= SAFETY.rxPackMaxAllowed
-                       and (parsedMax - parsedMin) >= 0.1
+    OPT.rxPackValid = validRxRange(parsedMin, parsedMax)
   end
   A.motorSourcePhysical = isPhysicalMotorSource(SRC.motorSwitch)
   A.motorSourceReadable = A.motorSourcePhysical
@@ -1055,7 +1028,7 @@ local function getModelName()
   local v = F.modelName
   if v ~= nil then return v end
   local info = getModelInfo()
-  local n = OPT.ompAuto and (OMP_AUTO.name or "OMP AUTO")
+  local n = OPT.ompAuto and (OMP_AUTO.name or "OMPHOBBY")
             or (OPT.autoHeliType and AUTO_HELI.name or (info and info.name or nil))
   if not n or n == "" then n = "MODEL" end
   v = (string.gsub(n, ",", " "))
@@ -1143,21 +1116,6 @@ function sensors.getCellCount()
     if v == 2 then
       D.isLiHV = true
       A.liHvHighSamples = SAFETY.liHvConfirmSamples
-    end
-  elseif OPT.heliType == HELI_OMPHOBBY then
-    -- OMP receivers do not stream cell count. Model names containing M2 are
-    -- 3S; names containing M1 are 2S LiHV (8.5-8.7 V fully charged). Match
-    -- case-insensitively anywhere and make the M1 chemistry deterministic
-    -- instead of waiting for a high-voltage sample to identify it.
-    local modelName = string.upper(getModelName())
-    if string.find(modelName, "M2", 1, true) then
-      v = 3
-    elseif string.find(modelName, "M1", 1, true) then
-      v = 2
-      D.isLiHV = true
-      A.liHvHighSamples = SAFETY.liHvConfirmSamples
-    else
-      v = 0
     end
   else
     v = sensors.getSensorNumber("cellCount") or 0
@@ -1363,9 +1321,8 @@ function sensors.txBatteryState()
   end
   local volts = sensors.getTxVolt()
   if not (volts > 0 and volts <= 20) then return nil end
-  -- Retain saved slot 2 as a compatibility fallback; the radio range wins.
-  local low = sensors.txMin or (txIsLiIon and 62 or 70)
-  local high = sensors.txMax or 84
+  local low, high = sensors.txMin, sensors.txMax
+  if not low or not high then return nil end
   -- Use the physical display, not the widget zone, for native layout scaling.
   local width, green, amber = 20, 12, 5
   if G.screenW == 800 then width, green, amber = 28, 17, 7 end
@@ -3089,10 +3046,7 @@ local function updateBottom()
   local prof = sensors.getBattProfile()
   local batteryTitle = G.compact and "BATT" or "BATTERY"
   local header
-  if not D.hasBattData and OPT.heliType == HELI_OMPHOBBY
-     and sensors.getCellCount() == 0 then
-    header = batteryTitle .. " · ADD M1 OR M2 TO MODEL NAME"
-  elseif not D.hasBattData then
+  if not D.hasBattData then
     header = batteryTitle .. " · no data"
   elseif cells > 0 and volt > 0 and prof and prof > 0 then
     header = string.format("%s · P%d · %dS · %.1fV",
@@ -4612,8 +4566,10 @@ local function profileButtonText(wgt, profileIndex, multiline)
 end
 
 local function showNativeBatteryProfileMenu(wgt)
+  if wgt.kseSettingsCapable then return false end
   local epoch = wgt.kseOwnerEpoch
-  local function current() return WidgetOwner.current(wgt) and wgt.kseOwnerEpoch == epoch end
+  local function current() return WidgetOwner.current(wgt) and wgt.kseOwnerEpoch == epoch
+    and not wgt.kseSettings end
   if not lvgl or type(lvgl.menu) ~= "function" then
     profileSetNotice(wgt, "BATTERY PROFILE ERROR",
       "UPDATE EDGETX FOR PROFILE PICKER", C_RED, 500)
@@ -4710,7 +4666,8 @@ end
 
 showBatteryProfileMenu = function(wgt)
   local epoch = wgt.kseOwnerEpoch
-  local function current() return WidgetOwner.current(wgt) and wgt.kseOwnerEpoch == epoch end
+  local function current() return WidgetOwner.current(wgt) and wgt.kseOwnerEpoch == epoch
+    and not wgt.kseSettings end
   if wgt.profileDialog then return true end
   if G.preferNativePicker and (G.w < 430 or G.h < 300) and lvgl
      and type(lvgl.menu) == "function"
@@ -4734,7 +4691,7 @@ showBatteryProfileMenu = function(wgt)
     title=title, w=dialogW, h=dialogH,
     close=function() if current() then wgt.profileDialog = nil end end,
   })
-  if not dialogOk or type(dialog) ~= "table"
+  if not dialogOk or (type(dialog) ~= "table" and type(dialog) ~= "userdata")
      or type(dialog.build) ~= "function" then
     return showNativeBatteryProfileMenu(wgt)
   end
@@ -5338,7 +5295,7 @@ local function serviceBatteryProfileFeature(wgt, allowUi, event, touchState)
       end
     end
 
-    if wasAutoShown and snapshotReady
+    if allowUi and wasAutoShown and snapshotReady
        and (not wgt.profileBusy or profileCapacityInProgress(wgt))
        and EVT_TOUCH_TAP and event == EVT_TOUCH_TAP
        and profilePointInBatteryTarget(wgt, touchState) then
@@ -5374,6 +5331,7 @@ end
 
 return {
   prepare=prepareBatteryProfileFeature,
+  closeUi=closeBatteryProfileMenu,
   retire=profileRetire,
   service=serviceBatteryProfileFeature,
   reset=profileResetConnection,
@@ -5601,7 +5559,8 @@ function OMP_AUTO.sync(widget)
   OMP_AUTO.display(widget, true, nil)
 end
 -- END SHARED omp_auto.lua
-local function buildUi()
+local function buildUi(widget)
+  batteryProfiles.closeUi(widget)
   if not lvgl then return end
   lvgl.clear()
   V = {}
@@ -5617,7 +5576,6 @@ local function buildUi()
   buildBottom()
   batteryProfiles.buildArmingBanner()
   batteryProfiles.buildPrompt()
-  updateUiState()
 end
 
 local function ensureLayout(widget, fullScreen)
@@ -5626,7 +5584,7 @@ local function ensureLayout(widget, fullScreen)
   if widget.layoutSignature == signature then return false end
   G.configure(x, y, w, h)
   widget.layoutSignature = signature
-  buildUi()
+  buildUi(widget)
   return true
 end
 
@@ -5638,20 +5596,726 @@ end
 G.pickerStyle = function() return {font=SMLSIZE, radius=6, color=C_TILE} end
 G.preferNativePicker = true
 
+-- BEGIN SHARED settings_store
+local SettingsStore = (function()
+-- Local dashboard configuration. No executable Lua data and no FC requests.
+-- File operations follow EdgeTX FatFS results/readback, not desktop Lua I/O.
+local Store = {root="/KSE/Settings", exports="/KSE/Settings/Exports", maxBytes=512}
+local fields = {
+  {"MinFlight", 1, 120, 20}, {"HeliType", 1, 5, 1},
+  {"BattRsv", 0, 50, 20}, {"BattVoice", 0, 1, 0},
+  {"RxPackMin", "text", nil, "6.60"}, {"RxPackMax", "text", nil, "8.40"},
+  {"MotorSw", 0, 32767, 0}, {"CountSrc", 1, 2, 2}, {"FuelCheck", 1, 121, 25},
+}
+Store.heliTypes={"Electric", "Nitro", "Auto Elec/Nitro", "OMPHOBBY"}
+-- Display order is independent of saved IDs. Retired manual OMP ID 3 now
+-- means automatic OMP; existing Rotorflight Auto ID 4 keeps its meaning.
+Store.heliTypeIds={1,2,4,5}
+local function integer(n, lo, hi)
+  return type(n)=="number" and n>=lo and n<=hi and n<=math.floor(n)
+end
+local function hex(text)
+  return (string.gsub(text, ".", function(c) return string.format("%02X",string.byte(c)) end))
+end
+local function unhex(text)
+  if #text%2~=0 or string.find(text,"[^%x]") then return nil end
+  return (string.gsub(text,"%x%x",function(c) return string.char(tonumber(c,16)) end))
+end
+local function identity(value)
+  return type(value)=="string" and #value>0 and #value<=64
+     and not string.find(value,"[%c/\\]") and value~="." and value~=".."
+end
+local function basename(modelFile)
+  if not identity(modelFile) then return nil end
+  return (string.find(modelFile,"[^%w_.%-]") and "v2-hex-"..hex(modelFile)
+          or "v2-model-"..modelFile)..".kse"
+end
+local function checksum(text)
+  local a,b=1,0
+  for i=1,#text do a=(a+string.byte(text,i))%65521; b=(b+a)%65521 end
+  return string.format("%04X%04X",b,a)
+end
+function Store.supported()
+  if type(getVersion)~="function" then return false end
+  local _,_,major,minor,patch=getVersion()
+  -- Configuration requires the reviewed native editor API family.
+  return major==2 and minor==12 and type(patch)=="number" and patch>=4
+end
+function Store.defaults()
+  local result={Theme=1}
+  for _,field in ipairs(fields) do result[field[1]]=field[4] end
+  local info=type(getFieldInfo)=="function" and getFieldInfo("SG") or nil
+  if type(info)=="table" and type(info.id)=="number" then result.MotorSw=info.id end
+  return result
+end
+function Store.capture(values)
+  local result=Store.defaults()
+  for key in pairs(result) do
+    if values and values[key]~=nil then result[key]=values[key] end
+  end
+  if type(result.BattVoice)=="boolean" then result.BattVoice=result.BattVoice and 1 or 0 end
+  if integer(result.HeliType,3,3) then result.HeliType=5 end
+  return result
+end
+function Store.make(modelFile, variant, values, base)
+  local source=Store.capture(values)
+  local record={model=modelFile,values={},themes={}}
+  for _,field in ipairs(fields) do record.values[field[1]]=source[field[1]] end
+  for key,value in pairs(base and base.themes or {}) do record.themes[key]=value end
+  record.themes[variant]=source.Theme
+  return record
+end
+function Store.effective(record, variant)
+  local result=Store.defaults()
+  if record then
+    for _,field in ipairs(fields) do result[field[1]]=record.values[field[1]] end
+    result.Theme=record.themes[variant] or 1
+  end
+  if integer(result.HeliType,3,3) then result.HeliType=5 end
+  return result
+end
+function Store.equal(a,b)
+  if not a or not b then return false end
+  if a.Theme~=b.Theme then return false end
+  for _,field in ipairs(fields) do
+    local key=field[1]
+    if a[key]~=b[key] then return false end
+  end
+  return true
+end
+local function valid(record)
+  if type(record)~="table" or not identity(record.model)
+     or type(record.values)~="table" or type(record.themes)~="table" then
+    return false,"Invalid model identity"
+  end
+  for _,field in ipairs(fields) do
+    local key,value=field[1],record.values[field[1]]
+    if field[2]=="text" then
+      if type(value)~="string" or not string.match(value,"^[4-9]%.%d%d$")
+         or tonumber(value)>9 then
+        return false,"Invalid "..key
+      end
+    elseif not integer(value,field[2],field[3]) then return false,"Invalid "..key end
+  end
+  for key,value in pairs(record.themes) do
+    if (key~="KSE4" and key~="KSE5") or not integer(value,1,22) then
+      return false,"Invalid theme"
+    end
+  end
+  return true
+end
+function Store.serialize(record)
+  local ok,reason=valid(record)
+  if not ok then return nil,reason end
+  local lines={"KSE_SETTINGS=2\n","model="..hex(record.model).."\n"}
+  for _,field in ipairs(fields) do
+    local key,value=field[1],record.values[field[1]]
+    if value~=nil then
+      lines[#lines+1]=key.."="..(field[2]=="text" and hex(value)
+                                  or string.format("%d",value)).."\n"
+    end
+  end
+  for _,variant in ipairs({"KSE4","KSE5"}) do
+    if record.themes[variant]~=nil then
+      lines[#lines+1]="theme."..variant.."="..string.format("%d",record.themes[variant]).."\n"
+    end
+  end
+  local payload=table.concat(lines)
+  return payload.."END="..checksum(payload).."\n"
+end
+function Store.parse(text)
+  if type(text)~="string" or #text>Store.maxBytes then return nil,"Settings file too large" end
+  local payload,sum=string.match(text,"^(.*\n)END=(%x%x%x%x%x%x%x%x)\n$")
+  if not payload then return nil,"Incomplete or damaged settings" end
+  local raw={}
+  for line in string.gmatch(payload,"([^\n]*)\n") do
+    local key,value=string.match(line,"^([%w_.]+)=(.*)$")
+    if not key or raw[key]~=nil then return nil,"Invalid settings record" end
+    raw[key]=value
+  end
+  if raw.KSE_SETTINGS~="2" then return nil,"Unsupported settings version" end
+  local record={model=raw.model and unhex(raw.model),values={},themes={}}
+  raw.KSE_SETTINGS,raw.model=nil,nil
+  for _,field in ipairs(fields) do
+    local key,value=field[1],raw[field[1]]
+    if value~=nil then
+      if field[2]=="text" then record.values[key]=unhex(value)
+      elseif string.match(value,"^%-?%d+$") then record.values[key]=tonumber(value) end
+      if record.values[key]==nil then return nil,"Invalid "..key end
+    end
+    raw[key]=nil
+  end
+  for _,variant in ipairs({"KSE4","KSE5"}) do
+    local key="theme."..variant
+    if raw[key]~=nil then
+      if not string.match(raw[key],"^%d+$") then return nil,"Invalid theme" end
+      record.themes[variant]=tonumber(raw[key])
+      if record.themes[variant]==nil then return nil,"Invalid theme" end
+    end
+    raw[key]=nil
+  end
+  if next(raw) then return nil,"Unknown settings field" end
+  local ok,reason=valid(record)
+  if not ok then return nil,reason end
+  if checksum(payload)~=sum then return nil,"Incomplete or damaged settings" end
+  return record
+end
+local function stat(path)
+  if type(fstat)~="function" then return nil,"Storage unavailable" end
+  local ok,info=pcall(fstat,path)
+  if not ok then return nil,"Storage read error" end
+  if info==nil then return nil,"missing" end
+  if type(info)~="table" or not integer(info.size,0,Store.maxBytes) then
+    return nil,"Settings file too large"
+  end
+  return info
+end
+local function read(path)
+  local info,reason=stat(path)
+  if not info then return nil,reason end
+  if not io or type(io.open)~="function" then return nil,"Storage unavailable" end
+  local ok,file=pcall(io.open,path,"r")
+  if not ok or not file then return nil,"Storage read error" end
+  local good,text=pcall(io.read,file,info.size)
+  local endOk,extra=pcall(io.read,file,1)
+  local closed=pcall(io.close,file)
+  local after=stat(path)
+  if not good or type(text)~="string" or #text~=info.size or not endOk
+     or extra~="" or not closed or not after or after.size~=info.size then
+    return nil,"Storage read error"
+  end
+  return text
+end
+local function readRecord(path,modelFile)
+  local text,reason=read(path)
+  if not text then return nil,reason end
+  local record,parseReason=Store.parse(text)
+  if not record then return nil,parseReason end
+  if modelFile and record.model~=modelFile then return nil,"Settings belong to another model" end
+  return record,nil,text
+end
+local function openPath(path,modelFile)
+  local state={path=path,model=modelFile,writable=false}
+  local record,reason,text=readRecord(path,modelFile)
+  if record then
+    state.record,state.baseText,state.source,state.writable=record,text,"main",true
+    return state
+  end
+  local backup,backupReason,backupText=readRecord(path..".bak",modelFile)
+  if backup then
+    state.record,state.baseText,state.source=backup,backupText,"backup"
+    state.writable=reason=="missing"
+    state.error=state.writable and "Recovered saved backup" or reason
+    return state
+  end
+  local temp,tempReason=stat(path..".tmp")
+  if reason=="missing" and backupReason=="missing" and not temp and tempReason=="missing" then
+    state.source,state.writable="new",true
+  else
+    state.error=reason~="missing" and reason or backupReason~="missing" and backupReason
+                or "Unconfirmed save; preserve .tmp file"
+  end
+  return state
+end
+function Store.open(modelFile)
+  local name=basename(modelFile)
+  if not name then return {model=modelFile,writable=false,error="Save the EdgeTX model first"} end
+  local state=openPath(Store.root.."/"..name,modelFile)
+  state.filename=name
+  return state
+end
+local function directory(path)
+  if type(dir)~="function" then return false end
+  local ok,iterator=pcall(dir,path)
+  return ok and type(iterator)=="function"
+end
+local function makeDirectory(path)
+  if directory(path) then return true end
+  if type(mkdir)~="function" then return false end
+  local ok,result=pcall(mkdir,path)
+  return ok and result==0 and directory(path)
+end
+local function mutation(fn,...)
+  if type(fn)~="function" then return false end
+  local ok,result=pcall(fn,...)
+  return ok and type(result)=="number" and result==0
+end
+local function write(path,text)
+  local ok,file=pcall(io.open,path,"w")
+  if not ok or not file then return false end
+  local written,result=pcall(io.write,file,text)
+  local closed=pcall(io.close,file)
+  return written and result~=nil and result~=false and closed and read(path)==text
+end
+function Store.startSave(state,record)
+  if not state or not state.writable or not state.path then
+    return nil,state and state.error or "Settings are read-only"
+  end
+  if record.model~=state.model then return nil,"Model changed" end
+  local text,reason=Store.serialize(record)
+  if not text then return nil,reason end
+  -- A private snapshot prevents later field edits from changing this save.
+  local snapshot={model=record.model,values={},themes={}}
+  for key,value in pairs(record.values) do snapshot.values[key]=value end
+  for key,value in pairs(record.themes) do snapshot.themes[key]=value end
+  return {state=state,record=snapshot,text=text,phase=1}
+end
+function Store.step(job)
+  if job.done then return job.done,job.error end
+  local state,path=job.state,job.state.path
+  local function fail(reason) job.done,job.error="error",reason; return "error",reason end
+  if job.phase==1 then
+    if not makeDirectory("/KSE") or not makeDirectory(Store.root)
+       or (state.export and not makeDirectory(Store.exports)) then return fail("Cannot create settings folder") end
+    local current,reason=read(path)
+    if current==job.text then job.phase=7; return "pending" end
+    if current then
+      if state.source=="new" or current~=state.baseText then return fail("Saved settings changed; reopen menu") end
+    elseif reason~="missing" then return fail(reason)
+    elseif state.source~="new" and read(path..".bak")~=state.baseText then
+      return fail("Saved backup unavailable")
+    end
+    job.hadMain=current~=nil
+  elseif job.phase==2 then
+    if not write(path..".tmp",job.text) then return fail("Settings write failed") end
+  elseif job.phase==3 then
+    if job.hadMain then
+      local info,reason=stat(path..".bak")
+      if info and not mutation(del,path..".bak") then return fail("Cannot replace settings backup") end
+      if not info and reason~="missing" then return fail(reason) end
+    end
+  elseif job.phase==4 then
+    local current,reason=read(path)
+    if (job.hadMain and current~=state.baseText)
+       or (not job.hadMain and (current~=nil or reason~="missing")) then
+      return fail("Saved settings changed; reopen menu")
+    end
+    if job.hadMain and not mutation(rename,path,path..".bak") then return fail("Cannot back up saved settings") end
+  elseif job.phase==5 then
+    if not mutation(rename,path..".tmp",path) then return fail("Cannot finish settings save") end
+    if read(path)~=job.text then return fail("Settings readback failed") end
+    -- Promotion, verification and live snapshot commit share one callback:
+    -- fullscreen/model cancellation cannot fall between these stages.
+    job.phase=7
+  end
+  if job.phase==7 then
+    state.record,state.baseText,state.source,state.error=job.record,job.text,"main",nil
+    job.done="done"
+    return "done"
+  end
+  job.phase=job.phase+1
+  return "pending"
+end
+function Store.readExport(filename)
+  if type(filename)~="string" or #filename>150
+     or not string.match(filename,"^[%w_.%-]+%.kse$") then return nil,"Select a .kse settings file" end
+  return readRecord(Store.exports.."/"..filename)
+end
+function Store.startExport(state)
+  if not state or not state.record or not state.filename then return nil,"Save KSE settings before exporting" end
+  local exported=openPath(Store.exports.."/"..state.filename,state.model)
+  exported.export=true
+  return Store.startSave(exported,state.record)
+end
+return Store
+end)()
+-- END SHARED settings_store
+-- BEGIN SHARED settings_menu
+local SettingsMenu = (function()
+-- Fullscreen, local-only editor. Native callbacks edit a draft or queue an
+-- intent; lifecycle callbacks own all page transitions and filesystem work.
+local Menu = {}
+local parents={model="home",power="home",nitro="power",count="home",
+  appearance="home",transfer="home",leave="home"}
+local titles={home="Settings",model="Model setup",power="Power & alerts",
+  nitro="Nitro setup",count="Flight counting",appearance="Appearance",
+  transfer="Backup & transfer",leave="Unsaved changes"}
+local function copy(source)
+  local result={}
+  for key,value in pairs(source or {}) do result[key]=value end
+  return result
+end
+function Menu.capable()
+  if not SettingsStore.supported() or not lvgl then return false end
+  for _,name in ipairs({"isFullScreen","clear","build","page","button","label",
+                         "rectangle","choice","numberEdit","toggle","source","file","dialog"}) do
+    if type(lvgl[name])~="function" then return false end
+  end
+  return type(lvgl.PAGE_BODY_HEIGHT)=="number" and type(lvgl.UI_ELEMENT_HEIGHT)=="number"
+         and type(lvgl.SRC_SWITCH)=="number" and type(lvgl.SCROLL_VER)=="number"
+end
+function Menu.attach(widget)
+  widget.kseSettingsCapable=Menu.capable()
+  if widget.kseSettingsCapable then widget.kseConfig=SettingsStore.open(widget.kseModelFile) end
+  return SettingsStore.effective(widget.kseConfig and widget.kseConfig.record,G.name)
+end
+function Menu.requirement(widget)
+  if widget.kseSettingsCapable then return false end
+  if not widget.kseRequirementDrawn and lvgl and type(lvgl.clear)=="function"
+     and type(lvgl.label)=="function" then
+    lvgl.clear()
+    lvgl.label({x=12,y=12,w=math.max(1,(widget.zone.w or LCD_W)-24),font=SMLSIZE,
+      text="KSE Settings require EdgeTX 2.12.4\nwith native LVGL controls."})
+    widget.kseRequirementDrawn=true
+  end
+  return true
+end
+function Menu.retire(widget)
+  -- May run from a retained native getter during model revocation. Never clear
+  -- LVGL, touch retired handles, or write files from this invalidation hook.
+  if widget.kseSettings then widget.layoutSignature=nil end
+  widget.kseSettings=nil
+  widget.kseSettingsGesture=nil
+end
+local function current(s)
+  return s.widget.kseSettings==s and s.epoch==s.widget.kseOwnerEpoch
+     and WidgetOwner.current(s.widget)
+end
+local function usable(s,revision)
+  return current(s) and s.revision==revision and not s.job
+end
+local function queue(s,action,value,revision)
+  if usable(s,revision) then s.intent={action,value} end
+  return 0
+end
+local function dirty(s)
+  return s.imported or not SettingsStore.equal(s.draft,s.original)
+end
+local function setDraft(s,key,value,revision)
+  if not usable(s,revision) then return end
+  if key=="BattVoice" then value=(value==true or value==1) and 1 or 0 end
+  s.draft[key]=value
+  s.message=nil
+end
+local function validate(s)
+  local low,high=parseVolt(s.draft.RxPackMin,nil),parseVolt(s.draft.RxPackMax,nil)
+  if not validRxRange(low,high) then
+    return "Nitro: use 4.00-9.00 V; maximum must exceed minimum by 0.10 V."
+  end
+  -- SOURCE picker also exposes function switches. Only physical switches have
+  -- the three-position semantics expected by the existing alert gate.
+  if not isPhysicalMotorSource(s.draft.MotorSw) then
+    return "Model setup: select a physical motor switch (SA, SB, ...)."
+  end
+end
+local function field(s,ui,key,label,kind,extra)
+  local revision=s.revision
+  local row=ui.y
+  ui.children[#ui.children+1]={type="label",x=ui.pad,y=row+5,w=ui.labelW,
+    h=ui.h,font=SMLSIZE,text=label,color=ui.palette.text}
+  local spec={type=kind,x=ui.pad+ui.labelW+ui.gap,y=row,
+    w=ui.w-ui.labelW-ui.gap-2*ui.pad,h=ui.h,
+    get=function() return s.draft[key] end,
+    set=function(value) setDraft(s,key,value,revision) end,
+    active=function() return usable(s,revision) end}
+  for k,v in pairs(extra or {}) do spec[k]=v end
+  ui.children[#ui.children+1]=spec
+  ui.y=row+ui.h+ui.gap
+end
+local function note(ui,text,color)
+  ui.children[#ui.children+1]={type="label",x=ui.pad,y=ui.y,w=ui.w-2*ui.pad,
+    h=ui.h*2,font=SMLSIZE,text=text,color=color or ui.palette.dim}
+  ui.y=ui.y+ui.h*2+ui.gap
+end
+local function button(s,ui,text,action,value)
+  local revision=s.revision
+  ui.children[#ui.children+1]={type="button",x=ui.pad,y=ui.y,w=ui.w-2*ui.pad,
+    h=ui.h,font=SMLSIZE,text=text,color=ui.palette.panel,textColor=ui.palette.text,
+    cornerRadius=6,active=function() return usable(s,revision) end,
+    press=function() return queue(s,action,value,revision) end}
+  ui.y=ui.y+ui.h+ui.gap
+end
+local function number(s,ui,key,label,lo,hi,display)
+  field(s,ui,key,label,"numberEdit",{min=lo,max=hi,display=display})
+end
+local function buildHome(s,ui)
+  local revision=s.revision
+  local items={{"Model setup","model"},{"Power & alerts","power"},
+    {"Flight counting","count"},{"Appearance","appearance"}}
+  local width=math.floor((ui.w-2*ui.pad-ui.gap)/2)
+  local height=ui.h+(ui.w==800 and 36 or 16)
+  for i,item in ipairs(items) do
+    ui.children[#ui.children+1]={type="button",x=ui.pad+((i-1)%2)*(width+ui.gap),
+      y=ui.y+math.floor((i-1)/2)*(height+ui.gap),w=width,h=height,
+      text=item[1],font=ui.w==800 and MIDSIZE or SMLSIZE,cornerRadius=8,
+      color=ui.palette.panel,textColor=ui.palette.text,
+      active=function() return usable(s,revision) end,
+      press=function() return queue(s,"page",item[2],revision) end}
+  end
+  ui.y=ui.y+2*(height+ui.gap)
+  button(s,ui,"Backup & transfer", "page","transfer")
+  note(ui,s.widget.kseConfig.error or (s.widget.kseConfig.record
+    and "Shared model settings  /  Separate dashboard themes"
+    or "New setup: review all settings, then Save & close."))
+end
+local function buildModel(s,ui)
+  local revision=s.revision
+  field(s,ui,"HeliType","Helicopter type","choice",{
+    values=SettingsStore.heliTypes,title="Helicopter type",
+    get=function()
+      for i,id in ipairs(SettingsStore.heliTypeIds) do
+        if id==s.draft.HeliType then return i end
+      end
+      return 1
+    end,
+    set=function(v)
+      local id=SettingsStore.heliTypeIds[v]
+      if id then setDraft(s,"HeliType",id,revision) end
+    end})
+  field(s,ui,"MotorSw","Motor switch","source",{filter=lvgl.SRC_SWITCH})
+  note(ui,"Auto Elec/Nitro uses the FC name.\nOMPHOBBY identifies M1/M2 from RxBt and Volt.")
+end
+local function buildPower(s,ui)
+  number(s,ui,"BattRsv","Battery reserve",0,50,function(v) return tostring(v).." %" end)
+  field(s,ui,"BattVoice","Battery voice","toggle",{
+    get=function() return s.draft.BattVoice==1 end})
+  button(s,ui,"Nitro setup  >","page","nitro")
+  note(ui,"Reserve reduces the capacity available to the fuel gauge.\nVoice announces low and critical battery levels.")
+end
+local function buildNitro(s,ui)
+  local revision=s.revision
+  for _,item in ipairs({{"RxPackMin","Receiver pack min V",6.6},{"RxPackMax","Receiver pack max V",8.4}}) do
+    local key=item[1]
+    field(s,ui,key,item[2],"numberEdit",{min=400,max=900,
+      get=function() return math.floor(parseVolt(s.draft[key],item[3])*100+0.5) end,
+      set=function(v) setDraft(s,key,string.format("%.2f",v/100),revision) end,
+      display=function(v) return string.format("%.2f V",v/100) end})
+  end
+  field(s,ui,"FuelCheck","Fuel Check Reminder","numberEdit",{min=0,max=120,
+    get=function() return s.draft.FuelCheck-1 end,
+    set=function(v) setDraft(s,"FuelCheck",v+1,revision) end,
+    display=function(v) return v==0 and "Off" or string.format("%02d:%02d",math.floor(v/4),(v%4)*15) end})
+  note(ui,"Nitro only. Receiver range: 4.00-9.00 V.\nFuel reminder follows Timer 1; each step is 15 seconds.")
+end
+local function buildCount(s,ui)
+  local revision=s.revision
+  field(s,ui,"CountSrc","Flight counter","choice",{
+    values={"KSE counter","Rotorflight FC"},title="Flight counter",
+    get=function() return s.draft.CountSrc==1 and 1 or 2 end})
+  field(s,ui,"MinFlight","Min flight time","numberEdit",{min=1,max=120,
+    get=function() return s.draft.MinFlight end,
+    set=function(v) setDraft(s,"MinFlight",v,revision) end,
+    display=function(v) return tostring(v).." sec" end})
+  note(ui,"Minimum flight applies to the KSE counter.\nOMPHOBBY uses KSE counting; your saved choice is retained.")
+end
+local function buildAppearance(s,ui)
+  local revision=s.revision
+  field(s,ui,"Theme","Dashboard theme","choice",{title="Theme",values=G.settingsThemes,
+    get=function() return s.draft.Theme end,
+    set=function(v)
+      setDraft(s,"Theme",v,revision)
+      queue(s,"preview",nil,revision)
+    end})
+  local p=G.settingsPalette(s.draft.Theme)
+  local height=ui.h*2
+  ui.children[#ui.children+1]={type="rectangle",x=ui.pad,y=ui.y,w=ui.w-2*ui.pad,
+    h=height,color=p.panel,filled=true,rounded=8}
+  ui.children[#ui.children+1]={type="rectangle",x=ui.pad,y=ui.y,w=5,
+    h=height,color=p.accent,filled=true}
+  ui.children[#ui.children+1]={type="label",x=ui.pad+18,y=ui.y+8,w=ui.w-2*ui.pad-30,
+    h=ui.h,font=MIDSIZE,text=G.name.."   06:24   78%",color=p.text}
+  ui.children[#ui.children+1]={type="label",x=ui.pad+18,y=ui.y+ui.h,w=ui.w-2*ui.pad-30,
+    h=ui.h,font=SMLSIZE,text="Theme preview",color=p.dim}
+  ui.y=ui.y+height+ui.gap
+  note(ui,"This dashboard's theme only.\nThe dashboard changes when you Save & close.")
+end
+local function buildTransfer(s,ui)
+  local revision=s.revision
+  button(s,ui,"Export saved KSE settings", "export")
+  field(s,ui,"exportName","Companion file","file",{folder=SettingsStore.exports,
+    extension=".kse",maxLen=150,hideExtension=false,title="KSE companion settings",
+    get=function() return s.exportName or "" end,
+    set=function(name) if usable(s,revision) then s.exportName=name end end})
+  button(s,ui,"Import selected companion", "import")
+  button(s,ui,"Reset draft to defaults", "defaults")
+  note(ui,"Destination: "..tostring(s.widget.kseModelFile).."\nCopy companion files to /KSE/Settings/Exports.")
+end
+local builders={home=buildHome,model=buildModel,power=buildPower,nitro=buildNitro,
+  count=buildCount,appearance=buildAppearance,transfer=buildTransfer}
+local function build(s)
+  s.revision=s.revision+1
+  local revision=s.revision
+  local w,h=LCD_W,LCD_H
+  local ui={w=w,h=lvgl.UI_ELEMENT_HEIGHT,pad=w==800 and 18 or 10,
+    gap=w==800 and 14 or 8,y=w==800 and 18 or 10,
+    labelW=math.floor(w*0.44),palette=G.settingsPalette(s.original.Theme),children={}}
+  -- Native pages do not paint a custom opaque body themselves on all themes.
+  ui.children[1]={type="rectangle",x=0,y=0,w=w,h=lvgl.PAGE_BODY_HEIGHT,
+    color=ui.palette.bg,filled=true,floating=true}
+  if s.message then note(ui,s.message,ui.palette.text) end
+  if s.page=="leave" then
+    note(ui,"Keep your changes to this model?")
+    button(s,ui,"Save & close","save")
+    button(s,ui,"Discard changes","discard")
+    button(s,ui,"Continue editing","page","home")
+  else builders[s.page](s,ui) end
+  local header=h-lvgl.PAGE_BODY_HEIGHT
+  local saveW=w==800 and 178 or 124
+  lvgl.clear()
+  lvgl.build({{type="page",title=G.name.." Settings",subtitle=function()
+      if s.job then return s.exporting and "Exporting..." or "Saving..." end
+      return titles[s.page]..(dirty(s) and " *" or "")
+    end,backButton=false,scrollDir=lvgl.SCROLL_VER,scrollBar=true,
+    back=function() return queue(s,"back",nil,revision) end,children=ui.children},
+    {type="button",x=w-saveW-ui.pad,y=math.floor((header-ui.h)/2),w=saveW,h=ui.h,
+      text="Save & close",font=SMLSIZE,cornerRadius=6,
+      active=function() return usable(s,revision) and s.widget.kseConfig.writable end,
+      press=function() return queue(s,"save",nil,revision) end}})
+  s.rebuild=false
+end
+local function open(widget)
+  local state=SettingsStore.open(widget.kseModelFile)
+  if widget.kseConfig.record and (not state.record
+     or (state.source~="main" and state.baseText~=widget.kseConfig.baseText)) then
+    -- A temporary card/read failure must not change a running model's setup.
+    state.record=widget.kseConfig.record
+    state.baseText=widget.kseConfig.baseText
+    state.source="retained"
+    state.writable=false
+    state.error="Saved file changed or unavailable; keeping live settings"
+  end
+  widget.kseConfig=state
+  local effective=SettingsStore.effective(state.record,G.name)
+  if not SettingsStore.equal(effective,widget.options) then G.updateSettings(widget,effective) end
+  local original=copy(widget.options)
+  widget.kseSettings={widget=widget,epoch=widget.kseOwnerEpoch,revision=0,
+    original=original,draft=copy(original),page="home",rebuild=true,
+    themeBase={themes=copy(widget.kseConfig.record and widget.kseConfig.record.themes)}}
+  widget.kseSettingsGesture=nil
+  widget.layoutSignature=nil
+end
+local function close(s)
+  Menu.retire(s.widget)
+  s.widget.kseUiDirty=true
+end
+local function process(s)
+  local intent=s.intent
+  s.intent=nil
+  if not intent then return end
+  local action,value=intent[1],intent[2]
+  if action=="page" then s.page=value; s.message=nil
+  elseif action=="preview" then
+    -- A native choice has closed before this deferred refresh rebuild.
+  elseif action=="back" then
+    if s.page=="home" then
+      if dirty(s) then s.page="leave" else close(s); return end
+    else s.page=parents[s.page] or "home" end
+    s.message=nil
+  elseif action=="discard" then close(s); return
+  elseif action=="defaults" then
+    s.draft=SettingsStore.defaults()
+    s.themeBase={themes=copy(s.widget.kseConfig.record and s.widget.kseConfig.record.themes)}
+    s.imported=false
+    s.message="Defaults loaded into draft. Review, then Save & close."
+  elseif action=="import" then
+    local record,reason=SettingsStore.readExport(s.exportName)
+    if record then
+      s.draft=SettingsStore.effective(record,G.name)
+      for key,v in pairs(record.themes) do s.themeBase.themes[key]=v end
+      s.imported=true
+      s.message="Companion loaded for this model. Check motor switch before saving."
+    else s.message=reason end
+  elseif action=="export" then
+    s.job,s.message=SettingsStore.startExport(s.widget.kseConfig)
+    s.exporting=s.job~=nil
+  elseif action=="save" then
+    s.message=validate(s)
+    if not s.message then
+      local record=SettingsStore.make(s.widget.kseModelFile,G.name,s.draft,s.themeBase)
+      s.job,s.message=SettingsStore.startSave(s.widget.kseConfig,record)
+      s.exporting=false
+    end
+  end
+  s.rebuild=true
+end
+function Menu.service(widget,event,touch)
+  if not widget.kseSettingsCapable then return false end
+  local fullscreen=event~=nil and lvgl.isFullScreen()
+  if not fullscreen then Menu.retire(widget); return false end
+  local s=widget.kseSettings
+  if s and not current(s) then Menu.retire(widget); return false end
+  if s then
+    -- The widget root stays in the native focus group. If it owns focus,
+    -- short EXIT arrives here; focused editors/popups consume it themselves.
+    if not s.intent and ((EVT_VIRTUAL_EXIT and event==EVT_VIRTUAL_EXIT)
+       or (EVT_EXIT_BREAK and event==EVT_EXIT_BREAK)) then
+      queue(s,"back",nil,s.revision)
+    end
+    if s.job then
+      local status,reason=SettingsStore.step(s.job)
+      if status=="done" then
+        s.job=nil
+        if s.exporting then
+          s.message="Exported saved settings to /KSE/Settings/Exports."
+          s.rebuild=true
+        else
+          local saved=SettingsStore.effective(widget.kseConfig.record,G.name)
+          close(s)
+          return false,saved
+        end
+      elseif status=="error" then s.job=nil; s.message=reason; s.rebuild=true end
+    else process(s) end
+    if widget.kseSettings==s and s.rebuild then build(s) end
+    return widget.kseSettings~=nil
+  end
+  -- The profile modal owns its current gesture. The verified firmware path
+  -- uses tracked dialogs, never the unobservable native menu fallback.
+  if widget.profileDialog then widget.kseSettingsGesture=nil; return false end
+  local now=getTime and getTime() or 0
+  local gesture=widget.kseSettingsGesture
+  if (EVT_VIRTUAL_ENTER_LONG and event==EVT_VIRTUAL_ENTER_LONG)
+     or (EVT_ENTER_LONG and event==EVT_ENTER_LONG) then
+    -- Color EdgeTX >=2.11 suppresses ENTER release after a long press (RF2
+    -- ui_lcd.lua documents this too). Do not wait for a nonexistent BREAK.
+    open(widget)
+  elseif EVT_TOUCH_FIRST and event==EVT_TOUCH_FIRST and touch then
+    widget.kseSettingsGesture={time=now}
+  elseif EVT_TOUCH_SLIDE and event==EVT_TOUCH_SLIDE then
+    widget.kseSettingsGesture=nil
+  elseif EVT_TOUCH_BREAK and event==EVT_TOUCH_BREAK then
+    widget.kseSettingsGesture=nil
+    if gesture and gesture.time and now>=gesture.time and now-gesture.time>=70 then open(widget) end
+  end
+  -- Build controls on the next refresh. Touch has already released; hardware
+  -- long-press release is suppressed by the verified native event route.
+  return widget.kseSettings~=nil
+end
+function Menu.background(widget)
+  if widget.kseSettingsCapable and not lvgl.isFullScreen() then Menu.retire(widget) end
+end
+return Menu
+end)()
+-- END SHARED settings_menu
 -- BEGIN SHARED lifecycle.lua
 local function refreshOwned(widget, event, touchState)
+  if SettingsMenu.requirement(widget) then return end
   clearFrameCache()
   batteryProfiles.prepare(widget)
   OMP_AUTO.sync(widget)
-  ensureLayout(widget, event ~= nil)
+  local editing, saved = SettingsMenu.service(widget, event, touchState)
+  if saved then
+    if not SettingsStore.equal(saved, widget.options) then G.updateSettings(widget, saved) end
+    -- Finish the save/apply callback before allocating the dashboard again.
+    editing = true
+  end
+  local rebuilt = not editing and ensureLayout(widget, event ~= nil)
   local count, status, connected = FC.count, FC.status, widget.profileConnectedForDisplay
   local serviced = serviceTelemetry(true)
-  batteryProfiles.service(widget, true, event, touchState)
-  if serviced or widget.kseUiDirty or count ~= FC.count or status ~= FC.status
-     or connected ~= widget.profileConnectedForDisplay then updateUiState(widget) end
-  widget.kseUiDirty = nil
+  local allowUi = not editing and widget.kseSettingsGesture == nil
+  batteryProfiles.service(widget, allowUi, allowUi and event or nil, allowUi and touchState or nil)
+  if not editing and not rebuilt then
+    if serviced or widget.kseUiDirty or count ~= FC.count or status ~= FC.status
+       or connected ~= widget.profileConnectedForDisplay then updateUiState(widget) end
+    widget.kseUiDirty = nil
+  else
+    -- Rebuilding retained controls and updating every instrument in the same
+    -- callback can exceed EdgeTX's instruction budget. Fill the new controls
+    -- on the following refresh; telemetry and RF work still run on both.
+    widget.kseUiDirty = true
+  end
 end
 local function backgroundOwned(widget)
+  SettingsMenu.background(widget)
   clearFrameCache()
   batteryProfiles.prepare(widget)
   OMP_AUTO.sync(widget)
@@ -5684,7 +6348,7 @@ local function createOwned(zone, options)
   batteryProfiles.flightSourceChanged(widget)
   return widget
 end
-local function updateOwned(widget, options)
+function G.updateSettings(widget, options)
   widget.options = options
   local previousHeliType = OPT.heliType
   local previousAutoHeliType = OPT.autoHeliType
@@ -5765,37 +6429,37 @@ local function updateOwned(widget, options)
   end
   A.lastDataTick = -1
   clearFrameCache()
-  G.prepareWidget(widget)
-  buildUi(widget)
+  widget.layoutSignature = nil
+  widget.kseUiDirty = true
 end
 function G.initializeOwner(widget)
   flightStore = WidgetOwner.sharedStore(flightStore)
   flightCache = flightStore.cache
   for key in pairs(widget) do
-    if key ~= "zone" and key ~= "options" and key ~= "kseOwnerEpoch"
+    if key ~= "zone" and key ~= "kseOwnerEpoch"
        and key ~= "kseModelFile" and key ~= "kseModelEpoch"
        and key ~= "profileOperationToken" and key ~= "armingStatusToken" then widget[key] = nil end
   end
-  local created = createOwned(widget.zone, widget.options)
+  local effective = SettingsMenu.attach(widget)
+  local created = createOwned(widget.zone, effective)
   for key, value in pairs(created) do widget[key] = value end
   widget.kseInitialized, widget.kseBlockedDrawn = true, nil
   widget.layoutSignature = nil
   widget.kseRevoke = function()
+    SettingsMenu.retire(widget)
     batteryProfiles.retire(widget)
     widget.kseInitialized = false
   end
 end
-local function create(zone, options)
-  local widget = {zone=zone, options=options or {}}
+local function create(zone)
+  local widget = {zone=zone}
   widget.kseModelFile, widget.kseModelEpoch = WidgetOwner.context()
   if WidgetOwner.claim(widget, false) then G.initializeOwner(widget) end
   return widget
 end
-local function update(widget, options)
-  if not widget then return end
-  widget.options = options or {}
-  if not WidgetOwner.claim(widget, false) then return end
-  updateOwned(widget, options)
+local function update(widget)
+  if not widget or not WidgetOwner.claim(widget, false) then return end
+  if not widget.kseInitialized then G.initializeOwner(widget) end
 end
 local function refresh(widget, event, touchState)
   if not widget then return end
@@ -5808,51 +6472,20 @@ local function background(widget)
   if widget.kseInitialized then backgroundOwned(widget) end
 end
 -- END SHARED lifecycle.lua
-local options = {
-  { "Theme",    CHOICE, 1, { "Dark", "Light", "Transparent",
+G.settingsThemes = { "Dark", "Light", "Transparent",
                              "Orange", "Red", "Blue", "Pink", "Green",
                              "Purple", "Reef", "Royal", "Ember",
                              "Graphite", "Glacier", "Sunset", "Synthwave",
                              "Gulf", "Voltage", "Transparent Light",
-                             "Titanium Ember", "Aurora", "Desert Night" } },
-  -- Candidate for a future feature: keep slot 2 until an explicit migration
-  -- can retire fallback use and safely interpret existing saved values 1/2.
-  { "TxBatt",   CHOICE, 1, { "LiPo", "Li-Ion" } },
-  { "MinFlight", VALUE, TOPBAR_MIN_DUR_DEFAULT, -30, 120 },
-  { "HeliType", CHOICE, 1, { "Electric", "Nitro", "OMPHOBBY", "Auto Elec/Nitro", "OMP Auto" } },
-  { "BattRsv", VALUE, 20, 0, 50 },
-  { "BattVoice", BOOL, 0 },
-  { "RxPackMin", STRING, "6.60" },
-  { "RxPackMax", STRING, "8.40" },
-  { "MotorSw", SOURCE, (function()
-      local info = type(getFieldInfo) == "function" and getFieldInfo("SG") or nil
-      return type(info) == "table" and info.id or 0
-    end)() },
-  { "CountSrc", CHOICE, 2, { "KSE Counter", "Rotorflight FC" } },
-}
-G.addFuelOption(options)
-local OPTION_LABELS = {
-  TxBatt   = "TX Batt Fallback",
-  MinFlight= "KSE Counter Min (sec)",
-  HeliType = "Heli Type",
-  BattRsv  = "Batt Reserve %",
-  BattVoice= "Battery Voice",
-  RxPackMin= "Rx Pack Minimum - Nitro",
-  RxPackMax= "Rx Pack Maximum - Nitro",
-  MotorSw  = "Motor Switch",
-  CountSrc = "Flight Counter",
-  FuelCheck= "Fuel Check Timer - Nitro",
-}
-local function translate(name, language)
-  return OPTION_LABELS[name] or name
-end
+                             "Titanium Ember", "Aurora", "Desert Night" }
+
+
 return {
   name       = "KSE4",
-  options    = options,
+  options    = {},
   create     = create,
   update     = update,
   refresh    = refresh,
   background = background,
-  translate  = translate,
   useLvgl    = true,
 }

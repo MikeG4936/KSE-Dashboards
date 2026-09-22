@@ -12,9 +12,10 @@ Consult the applicable contract before changing these boundaries:
 
 - **RF, ARM, ownership, Auto Elec/Nitro, Nitro reminder or footer status:** [compatibility contracts](../docs/compatibility.md) and [RF integration](../docs/rf-integration.md) define current behavior, staged operations and retained upstream limitations.
 - **OMP Auto:** [identity contract](../docs/omp-auto-identification-feasibility.md#omp-auto-implementation-contract) covers source qualification, acquisition, flight retention and shared image/count identity. It remains separate from Rotorflight Auto and MSP admission.
-- **Transmitter battery or saved TxBatt option:** [battery contract](../docs/edgetx-2.12.4-battery-icon-comparison.md#implementation-contract) defines native range/color behavior and slot-2 preservation.
+- **Transmitter battery:** [battery contract](../docs/edgetx-2.12.4-battery-icon-comparison.md#implementation-contract) defines native range/color behavior and unavailable-range handling.
 - **Signal or volume indication:** [status-icon contract](../docs/edgetx-2.12.4-status-icons.md) keeps native signal display independent of alert/RF link evidence and documents why volume remains deferred.
 - **Image loading:** [resource limits](../docs/image-resource-limits.md) define header screening, fallback and native-memory boundaries.
+- **Fullscreen settings:** [menu/storage contract](../docs/settings-menu.md) defines App Mode/activation, fresh setup, draft lifetime, shared values/separate themes, companion transfer and firmware gates.
 - **Count storage:** [storage contracts](../tests/storage/README.md) define recovery, dirty-cache handoff and EdgeTX filesystem semantics.
 
 ## Validation
@@ -29,6 +30,7 @@ Validation entry points:
 - [OMP Auto](../tests/omp_auto/README.md): CRSF source qualification, voltage confirmation, connection retention, image/count identity and RF isolation.
 - [Behavior](../tests/behavior/README.md): source identity/freshness, alerts, options and counter parity.
 - [MSP admission](../tests/msp_admission/README.md): pinned RF queue, continuation stages and embedded/external servicing.
+- [Settings](../tests/settings/README.md): schema, interrupted saves, draft/native callbacks, model/owner lifetime and full-dashboard integration.
 - [Storage](../tests/storage/README.md): recovery, handoff and instruction profiles.
 - [Picker](../tests/picker/README.md) and [rendering](../tests/render/README.md): capabilities, preserved style and actual render-function smoke coverage.
 - [Image bounds](../tests/assets/README.md): supplied assets, PNG/BMP headers and bounded resource checks before native decoding.

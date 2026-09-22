@@ -672,10 +672,7 @@ local function updateBottom()
   local prof = sensors.getBattProfile()
   local batteryTitle = G.compact and "BATT" or "BATTERY"
   local header
-  if not D.hasBattData and OPT.heliType == HELI_OMPHOBBY
-     and sensors.getCellCount() == 0 then
-    header = batteryTitle .. " · ADD M1 OR M2 TO MODEL NAME"
-  elseif not D.hasBattData then
+  if not D.hasBattData then
     header = batteryTitle .. " · no data"
   elseif cells > 0 and volt > 0 and prof and prof > 0 then
     header = string.format("%s · P%d · %dS · %.1fV",
@@ -891,7 +888,8 @@ end
 -- @include shared:rf.lua
 -- @include shared:auto_heli.lua
 -- @include shared:omp_auto.lua
-local function buildUi()
+local function buildUi(widget)
+  batteryProfiles.closeUi(widget)
   if not lvgl then return end
   lvgl.clear()
   V = {}
@@ -907,7 +905,6 @@ local function buildUi()
   buildBottom()
   batteryProfiles.buildArmingBanner()
   batteryProfiles.buildPrompt()
-  updateUiState()
 end
 
 local function ensureLayout(widget, fullScreen)
@@ -916,7 +913,7 @@ local function ensureLayout(widget, fullScreen)
   if widget.layoutSignature == signature then return false end
   G.configure(x, y, w, h)
   widget.layoutSignature = signature
-  buildUi()
+  buildUi(widget)
   return true
 end
 
@@ -928,52 +925,23 @@ end
 G.pickerStyle = function() return {font=SMLSIZE, radius=6, color=C_TILE} end
 G.preferNativePicker = true
 
+-- @module settings_store SettingsStore
+-- @module settings_menu SettingsMenu
 -- @include shared:lifecycle.lua
-local options = {
-  { "Theme",    CHOICE, 1, { "Dark", "Light", "Transparent",
+G.settingsThemes = { "Dark", "Light", "Transparent",
                              "Orange", "Red", "Blue", "Pink", "Green",
                              "Purple", "Reef", "Royal", "Ember",
                              "Graphite", "Glacier", "Sunset", "Synthwave",
                              "Gulf", "Voltage", "Transparent Light",
-                             "Titanium Ember", "Aurora", "Desert Night" } },
-  -- Candidate for a future feature: keep slot 2 until an explicit migration
-  -- can retire fallback use and safely interpret existing saved values 1/2.
-  { "TxBatt",   CHOICE, 1, { "LiPo", "Li-Ion" } },
-  { "MinFlight", VALUE, TOPBAR_MIN_DUR_DEFAULT, -30, 120 },
-  { "HeliType", CHOICE, 1, { "Electric", "Nitro", "OMPHOBBY", "Auto Elec/Nitro", "OMP Auto" } },
-  { "BattRsv", VALUE, 20, 0, 50 },
-  { "BattVoice", BOOL, 0 },
-  { "RxPackMin", STRING, "6.60" },
-  { "RxPackMax", STRING, "8.40" },
-  { "MotorSw", SOURCE, (function()
-      local info = type(getFieldInfo) == "function" and getFieldInfo("SG") or nil
-      return type(info) == "table" and info.id or 0
-    end)() },
-  { "CountSrc", CHOICE, 2, { "KSE Counter", "Rotorflight FC" } },
-}
-G.addFuelOption(options)
-local OPTION_LABELS = {
-  TxBatt   = "TX Batt Fallback",
-  MinFlight= "KSE Counter Min (sec)",
-  HeliType = "Heli Type",
-  BattRsv  = "Batt Reserve %",
-  BattVoice= "Battery Voice",
-  RxPackMin= "Rx Pack Minimum - Nitro",
-  RxPackMax= "Rx Pack Maximum - Nitro",
-  MotorSw  = "Motor Switch",
-  CountSrc = "Flight Counter",
-  FuelCheck= "Fuel Check Timer - Nitro",
-}
-local function translate(name, language)
-  return OPTION_LABELS[name] or name
-end
+                             "Titanium Ember", "Aurora", "Desert Night" }
+
+
 return {
   name       = "KSE4",
-  options    = options,
+  options    = {},
   create     = create,
   update     = update,
   refresh    = refresh,
   background = background,
-  translate  = translate,
   useLvgl    = true,
 }

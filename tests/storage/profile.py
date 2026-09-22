@@ -60,13 +60,17 @@ text=Storage.serialize(values)
 local count=values.M2;values.M2=nil;values["M2"..string.rep("y",32768-#text)]=count
 text=assert(Storage.serialize(values));assert(#text==32768)
 fs.files={["/flights-count.csv"]=text}
-local opts={CountSrc=1,HeliType=3,MinFlight=30,MotorSw=99}
-local init,w=measure(t.create,{x=0,y=0,w=800,h=480},opts)
+local opts={CountSrc=1,HeliType=1,MinFlight=30,MotorSw=99}
+t.fixture.seed(opts)
+local init,w=measure(t.create,{x=0,y=0,w=800,h=480})
+assert(t.OPT.flightCounter==1 and t.count()==7,"profile did not load local counter settings/history")
 m.now=0;m.timer={start=0,value=0};t.background(w)
 m.now=10;m.timer={start=0,value=30};t.background(w)
+assert(t.state.dirty and t.count()==8,"profile did not qualify a new count")
 m.now=20
 local save=measure(t.background,w)
 assert(not t.state.dirty,t.state.error)
+assert(fs.files["/flights-count.csv"]~=text,"profile did not persist the new count")
 print("PROFILE|callbacks|create="..init.."|background-save="..save)
 assert(init<15000 and save<15000,"mocked local-counter callback exceeds instruction margin")
 """

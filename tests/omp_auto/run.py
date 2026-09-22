@@ -18,7 +18,8 @@ def instrument(source):
                'owner=WidgetOwner,profiles=batteryProfiles,'
                'name=getModelName,cache=getFlightCache,count=getFlightCount,'
                'clear=clearFrameCache,image=resolveModelImagePath')
-    return source[:marker] + source[marker:].replace('return {', 'return {\n audit={' + exports + '},', 1)
+    return (source[:marker] + '\n' + ROOT.joinpath('tests/behavior/settings_fixture.lua').read_text()
+            + source[marker:].replace('return {', 'return {\n fixture=FixtureSettings, audit={' + exports + '},', 1))
 
 
 def main():

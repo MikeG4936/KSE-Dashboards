@@ -1109,8 +1109,10 @@ local function profileButtonText(wgt, profileIndex, multiline)
 end
 
 local function showNativeBatteryProfileMenu(wgt)
+  if wgt.kseSettingsCapable then return false end
   local epoch = wgt.kseOwnerEpoch
-  local function current() return WidgetOwner.current(wgt) and wgt.kseOwnerEpoch == epoch end
+  local function current() return WidgetOwner.current(wgt) and wgt.kseOwnerEpoch == epoch
+    and not wgt.kseSettings end
   if not lvgl or type(lvgl.menu) ~= "function" then
     profileSetNotice(wgt, "BATTERY PROFILE ERROR",
       "UPDATE EDGETX FOR PROFILE PICKER", C_RED, 500)
@@ -1207,7 +1209,8 @@ end
 
 showBatteryProfileMenu = function(wgt)
   local epoch = wgt.kseOwnerEpoch
-  local function current() return WidgetOwner.current(wgt) and wgt.kseOwnerEpoch == epoch end
+  local function current() return WidgetOwner.current(wgt) and wgt.kseOwnerEpoch == epoch
+    and not wgt.kseSettings end
   if wgt.profileDialog then return true end
   if G.preferNativePicker and (G.w < 430 or G.h < 300) and lvgl
      and type(lvgl.menu) == "function"
@@ -1231,7 +1234,7 @@ showBatteryProfileMenu = function(wgt)
     title=title, w=dialogW, h=dialogH,
     close=function() if current() then wgt.profileDialog = nil end end,
   })
-  if not dialogOk or type(dialog) ~= "table"
+  if not dialogOk or (type(dialog) ~= "table" and type(dialog) ~= "userdata")
      or type(dialog.build) ~= "function" then
     return showNativeBatteryProfileMenu(wgt)
   end
@@ -1826,7 +1829,7 @@ local function serviceBatteryProfileFeature(wgt, allowUi, event, touchState)
       end
     end
 
-    if wasAutoShown and snapshotReady
+    if allowUi and wasAutoShown and snapshotReady
        and (not wgt.profileBusy or profileCapacityInProgress(wgt))
        and EVT_TOUCH_TAP and event == EVT_TOUCH_TAP
        and profilePointInBatteryTarget(wgt, touchState) then
@@ -1862,6 +1865,7 @@ end
 
 return {
   prepare=prepareBatteryProfileFeature,
+  closeUi=closeBatteryProfileMenu,
   retire=profileRetire,
   service=serviceBatteryProfileFeature,
   reset=profileResetConnection,

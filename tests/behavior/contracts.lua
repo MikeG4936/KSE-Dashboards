@@ -100,10 +100,7 @@ __runContracts=function()
     end
   end
   source("tx-voltage",7.4)
-  t.applyOptions({TxBatt=1})
-  check("native range overrides LiPo",t.txBatteryState(),15/28)
-  t.applyOptions({TxBatt=2})
-  check("native range overrides LiIon",t.txBatteryState(),15/28)
+  check("radio range controls transmitter fill",t.txBatteryState(),15/28)
   local calls=m.generalCalls
   frame(m.now+99);t.txBatteryState()
   check("TX range cache bounded allocation",m.generalCalls,calls)
@@ -127,17 +124,15 @@ __runContracts=function()
     {battMin=6.2,battMax=math.huge}, {battMin=6.21,battMax=6.22}}
   for i,settings in ipairs(invalidSettings) do
     getGeneralSettings=function() return settings end
-    t.applyOptions({TxBatt=1});source("tx-voltage",7)
-    check("TX invalid range LiPo fallback "..i,t.txBatteryState(),0)
-    t.applyOptions({TxBatt=2})
-    check("TX invalid range LiIon fallback "..i,t.txBatteryState(),10/28)
+    source("tx-voltage",7)
+    check("TX invalid radio range has no fill "..i,t.txBatteryState(),nil)
   end
   getGeneralSettings=function() error("unavailable") end
   source("tx-voltage",6.2)
-  check("TX throwing API fallback",t.txBatteryState(),0)
+  check("TX throwing API has no fill",t.txBatteryState(),nil)
   getGeneralSettings=nil
   source("tx-voltage",8.4)
-  check("TX absent API fallback",t.txBatteryState(),1)
+  check("TX absent API has no fill",t.txBatteryState(),nil)
   getGeneralSettings=settingsApi;m.generalSettings=nil
   source("tx-voltage",0)
   check("TX zero source has no fill",t.txBatteryState(),nil)
@@ -195,13 +190,14 @@ __runContracts=function()
   check("Smart Fuel display",t.A.displayPercent,65)
   source("Bat%",60); t.tick(m.now)
   check("Smart Fuel display no second filter",t.A.displayPercent,50)
-  reset(); t.OPT.heliType=3; m.modelName="My m1 heli"
+  -- Radio naming must never bypass OMP voltage/metadata confirmation. The
+  -- dedicated OMP suite exercises confirmed M1/M2 cell and chemistry behavior.
+  reset(); t.applyOptions({HeliType=5}); m.modelName="My m1 heli"
   source("RxBt",8.6)
-  check("OMP M1 cells",t.getCellCount(),2)
-  check("OMP M1 chemistry",t.D.isLiHV,true)
-  check("OMP M1 cell voltage",t.getCellVoltage(),4.3)
+  check("OMP name cannot establish M1 cells",t.getCellCount(),0)
+  check("unconfirmed OMP cell voltage",t.getCellVoltage(),0)
   m.modelName="My M2 heli"; frame()
-  check("OMP M2 cells",t.getCellCount(),3)
+  check("OMP name cannot establish M2 cells",t.getCellCount(),0)
   m.modelName="Unidentified OMP"; frame()
   check("unidentified OMP cells",t.getCellCount(),0)
   m.modelName="Fixture"
@@ -290,9 +286,9 @@ __runContracts=function()
   check("Nitro recovered rearm",t.A.rxDeadVoiceLatched,false)
 
   reset()
-  local opts={Theme=1,TxBatt=1,HeliType=1,BattRsv=20,CountSrc=1,MinFlight=30,
+  local opts={Theme=1,HeliType=1,BattRsv=20,CountSrc=1,MinFlight=30,
               RxPackMin="6.60",RxPackMax="8.40",MotorSw=99}
-  local w=t.create({x=0,y=0,w=800,h=480},opts)
+  local w=t.fixture.create({x=0,y=0,w=800,h=480},opts)
   local function count(start,value)
     m.timer={start=start,value=value}; frame(); t.tickFlightCount()
     return t.getFlightCount()
@@ -310,7 +306,7 @@ __runContracts=function()
   -- Simulate removing the old widget and opening its replacement after the
   -- ownership lease expires. Exercise the real foreground takeover path.
   frame(m.now+500)
-  w=t.create({x=0,y=0,w=800,h=480},opts)
+  w=t.fixture.create({x=0,y=0,w=800,h=480},opts)
   t.refresh(w,nil,nil)
   check("attach over threshold no extra flight",count(120,80),3)
   check("attach then reset",count(120,120),3)
@@ -318,40 +314,40 @@ __runContracts=function()
   check("malformed timer",t.timerElapsedSeconds({value="bad"}),nil)
   check("timer elapsed clamped",t.timerElapsedSeconds({start=120,value=130}),0)
 
-  local names={"Theme","TxBatt","MinFlight","HeliType","BattRsv","BattVoice",
-               "RxPackMin","RxPackMax","MotorSw","CountSrc","FuelCheck"}
-  check("persisted option count",#t.options,11)
-  for i,name in ipairs(names) do check("option slot "..i,t.options[i][1],name) end
-  check("default counter",t.options[10][3],2)
-  t.applyOptions({MinFlight=-30,BattRsv=99,CountSrc=99,RxPackMin="66",RxPackMax="840"})
-  check("legacy negative duration",t.config(),30)
+  check("native descriptor has no options",#t.options,0)
+  check("canonical default counter",t.fixture.defaults().CountSrc,2)
+  check("canonical default fuel step",t.fixture.defaults().FuelCheck,25)
+  t.applyOptions({MinFlight=30,BattRsv=99,CountSrc=99,RxPackMin="6.60",RxPackMax="8.40"})
+  check("minimum flight seconds",t.config(),30)
   check("reserve clamped",t.OPT.reservePct,50)
   check("invalid counter defaults FC",t.OPT.flightCounter,2)
-  check("legacy Rx tenths",t.OPT.rxPackMin,6.6)
-  check("legacy Rx hundredths",t.OPT.rxPackMax,8.4)
+  check("canonical Rx minimum",t.OPT.rxPackMin,6.6)
+  check("canonical Rx maximum",t.OPT.rxPackMax,8.4)
   check("Rx settings validity",t.OPT.rxPackValid,true)
+  t.applyOptions({RxPackMin="8.30",RxPackMax="8.40"})
+  check("one-tenth Rx range survives float precision",t.OPT.rxPackValid,true)
   t.applyOptions(opts)
   t.A.battZeroReached=true; t.A.rxDeadVoiceLatched=true; t.S.rpmMax=2300
-  opts.Theme=2; t.update(w,opts)
+  opts.Theme=2; t.fixture.apply(w,opts)
   check("theme preserves flight warning",t.A.battZeroReached,true)
   check("theme preserves Nitro warning",t.A.rxDeadVoiceLatched,true)
   check("theme preserves session maximum",t.S.rpmMax,2300)
-  opts.BattRsv=25; t.update(w,opts)
+  opts.BattRsv=25; t.fixture.apply(w,opts)
   check("reserve resets flight warning",t.A.battZeroReached,false)
   check("reserve preserves Nitro warning",t.A.rxDeadVoiceLatched,true)
-  opts.RxPackMin="6.7"; t.update(w,opts)
+  opts.RxPackMin="6.70"; t.fixture.apply(w,opts)
   check("Rx option resets Nitro warning",t.A.rxDeadVoiceLatched,false)
   t.D.currentValid=true; t.A.linkAvailable=true
-  opts.HeliType=2; t.update(w,opts)
+  opts.HeliType=2; t.fixture.apply(w,opts)
   check("type resets sensor evidence",t.D.currentValid,false)
   check("type resets link evidence",t.A.linkAvailable,false)
   check("type resets session maximum",t.S.rpmMax,0)
-  for i=1,#t.options[1][4] do
+  for i=1,#t.fixture.themes do
     opts.Theme=i; t.applyOptions(opts)
     local bg,accent,transparent=t.theme()
     assert(transparent==(__variant=="KSE4" and (i==3 or i==19)))
     -- Palette and theme slot traces compare to the same variant's baseline.
-    print("THEME|"..i.."|"..t.options[1][4][i].."|"..tostring(bg).."|"..
+    print("THEME|"..i.."|"..t.fixture.themes[i].."|"..tostring(bg).."|"..
           tostring(accent).."|"..tostring(transparent))
   end
   -- Generic metadata is cached for 100 ticks, including unsuccessful lookup.
@@ -485,14 +481,16 @@ __runContracts=function()
 
   -- Effective OMP counter choice must not rewrite the persisted preference.
   reset()
-  local savedOptions={HeliType=3,CountSrc=2,BattRsv=20,MinFlight=20,
+  local savedOptions={HeliType=5,CountSrc=2,BattRsv=20,MinFlight=20,
                       RxPackMin="6.60",RxPackMax="8.40",MotorSw=99}
   t.applyOptions(savedOptions)
   check("OMP effective local counter",t.OPT.flightCounter,t.FC.RADIO)
   check("OMP preserves saved FC preference",savedOptions.CountSrc,2)
+  savedOptions.HeliType=3; t.applyOptions(savedOptions)
+  check("prior OMP setting requires automatic identity",t.OPT.ompAuto,true)
   savedOptions.HeliType=1; t.applyOptions(savedOptions)
   check("Electric restores saved FC preference",t.OPT.flightCounter,t.FC.ROTORFLIGHT)
-  savedOptions.HeliType=3; savedOptions.CountSrc=1; t.applyOptions(savedOptions)
+  savedOptions.HeliType=5; savedOptions.CountSrc=1; t.applyOptions(savedOptions)
   check("OMP selected local counter stays local",t.OPT.flightCounter,t.FC.RADIO)
   savedOptions.HeliType=1; t.applyOptions(savedOptions)
   check("Electric preserves saved local preference",t.OPT.flightCounter,t.FC.RADIO)

@@ -98,14 +98,7 @@ local C_GREEN, C_YELLOW, C_RED, C_BLUE, C_CYAN, C_ORANGE
 -- @include shared:enums.lua
 local GOV_COLOR, GOV_FALLBACK = {}, {}
 
-local function applyTheme(name)
-  local rgb = lcd.RGB
-  C_GREEN  = rgb(28, 232, 119)
-  C_YELLOW = rgb(255, 196, 48)
-  C_ORANGE = rgb(255, 112, 28)
-  C_RED    = rgb(255, 64, 80)
-  C_BLUE   = rgb(55, 136, 255)
-  C_CYAN   = rgb(30, 220, 240)
+function G.themeAnchors(name)
   -- KSE4-inspired opaque palettes. Each entry retains KSE4's background,
   -- tile, border, muted-text, and accent colors; KSE5 derives its additional
   -- top-bar, alternate-panel, and ring-track layers from those five anchors.
@@ -146,6 +139,18 @@ local function applyTheme(name)
   elseif name == "desert_night" then
     p = {26,21,12, 52,51,27, 118,101,59, 201,187,139, 245,196,81}
   end
+  return p
+end
+
+local function applyTheme(name)
+  local rgb = lcd.RGB
+  C_GREEN  = rgb(28, 232, 119)
+  C_YELLOW = rgb(255, 196, 48)
+  C_ORANGE = rgb(255, 112, 28)
+  C_RED    = rgb(255, 64, 80)
+  C_BLUE   = rgb(55, 136, 255)
+  C_CYAN   = rgb(30, 220, 240)
+  local p = G.themeAnchors(name)
   if p then
     C_BG        = rgb(p[1], p[2], p[3])
     C_TOP       = rgb(math.floor((p[1] * 2 + p[4]) / 3 + 0.5),
@@ -741,16 +746,13 @@ local function updateRing(wgt, index, value, unit, footer, progress, color,
 end
 
 local function batteryFooter()
-  if OPT.ompAuto and not OMP_AUTO.ready then return "OMP AUTO" end
+  if OPT.ompAuto and not OMP_AUTO.ready then return "OMPHOBBY" end
   if not OPT.simTelemetry and A.motorConfigError then
     return G.compact and "SET MOTOR SW" or "SET MOTOR SWITCH"
   end
   if OPT.heliType == HELI_NITRO then
     if not OPT.rxPackValid then return "INVALID RX RANGE" end
     return D.rxVoltage and string.format("RX %.2fV", D.rxVoltage) or "NO TELEMETRY"
-  end
-  if OPT.heliType == HELI_OMPHOBBY and sensors.getCellCount() == 0 then
-    return "ADD M1/M2 NAME"
   end
   local parts = {}
   local profile = sensors.getBattProfile()
@@ -777,9 +779,6 @@ local function batteryInvalidMessage()
   end
   if OPT.heliType == HELI_NITRO and not OPT.rxPackValid then
     return "CHECK RX RANGE"
-  end
-  if OPT.heliType == HELI_OMPHOBBY and sensors.getCellCount() == 0 then
-    return "ADD M1/M2 NAME"
   end
   return A.linkAvailable and "NO BATTERY DATA" or ""
 end
@@ -919,6 +918,7 @@ end
 -- @include shared:auto_heli.lua
 -- @include shared:omp_auto.lua
 local function buildUi(wgt)
+  batteryProfiles.closeUi(wgt)
   if not lvgl then wgt.uiBuilt = false; return end
   lvgl.clear()
   wgt.profileDialog = nil
@@ -955,7 +955,6 @@ local function buildUi(wgt)
   end
   buildProfileEntryPrompt(wgt)
   wgt.uiBuilt = true
-  updateUiState(wgt)
 end
 
 local function ensureLayout(wgt, fullScreen)
@@ -978,56 +977,23 @@ G.pickerStyle = function()
 end
 G.preferNativePicker = false
 
+-- @module settings_store SettingsStore
+-- @module settings_menu SettingsMenu
 -- @include shared:lifecycle.lua
-local options = {
-  { "Theme",     CHOICE, 1, {
+G.settingsThemes = {
       "Dark", "Light", "Arctic Blue", "Midnight Violet", "Orange",
       "Red", "Blue", "Pink", "Green", "Purple", "Reef", "Royal",
       "Ember", "Graphite", "Glacier", "Sunset", "Synthwave", "Gulf",
       "Voltage", "Titanium Ember", "Aurora", "Desert Night",
-    } },
-  -- Candidate for a future feature: keep slot 2 until an explicit migration
-  -- can retire fallback use and safely interpret existing saved values 1/2.
-  { "TxBatt",    CHOICE, 1, { "LiPo", "Li-Ion" } },
-  { "MinFlight", VALUE, TOPBAR_MIN_DUR_DEFAULT, -30, 120 },
-  { "HeliType",  CHOICE, 1, { "Electric", "Nitro", "OMPHOBBY", "Auto Elec/Nitro", "OMP Auto" } },
-  { "BattRsv",   VALUE, 20, 0, 50 },
-  { "BattVoice", BOOL, 0 },
-  { "RxPackMin", STRING, "6.60" },
-  { "RxPackMax", STRING, "8.40" },
-  { "MotorSw",   SOURCE, (function()
-      local info = type(getFieldInfo) == "function" and getFieldInfo("SG") or nil
-      return type(info) == "table" and info.id or 0
-    end)() },
-  { "CountSrc",  CHOICE, 2,
-    { "KSE Counter", "RotorFlight" } },
-}
-G.addFuelOption(options)
+    }
 
-local OPTION_LABELS = {
-  TxBatt="TX Batt Fallback",
-  MinFlight="KSE Counter Min (sec)",
-  HeliType="Heli Type",
-  BattRsv="Battery Reserve %",
-  BattVoice="Battery Voice",
-  RxPackMin="Rx Pack Minimum - Nitro",
-  RxPackMax="Rx Pack Maximum - Nitro",
-  MotorSw="Motor Switch",
-  CountSrc="Flight Counter",
-  FuelCheck="Fuel Check Timer - Nitro",
-}
-
-local function translate(name, language)
-  return OPTION_LABELS[name] or name
-end
 
 return {
   name="KSE5",
-  options=options,
+  options={},
   create=create,
   update=update,
   background=background,
   refresh=refresh,
-  translate=translate,
   useLvgl=true,
 }

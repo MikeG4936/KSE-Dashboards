@@ -23,6 +23,7 @@
 !/docs/release-packaging.md
 !/docs/rf-integration.md
 !/docs/runtime-resources.md
+!/docs/settings-menu.md
 !/docs/telemetry-configuration-audit.md
 !/docs/transmitter-validation.md
 
@@ -42,6 +43,8 @@
 !/src/shared/omp_auto.lua
 !/src/shared/options.lua
 !/src/shared/rf.lua
+!/src/shared/settings_store.lua
+!/src/shared/settings_menu.lua
 !/src/shared/state.lua
 !/src/shared/telemetry.lua
 !/src/shared/widget_owner.lua
@@ -118,6 +121,11 @@
 !/tests/storage/*.py
 !/tests/storage/*.lua
 !/tests/storage/README.md
+!/tests/settings/
+/tests/settings/*
+!/tests/settings/*.py
+!/tests/settings/*.lua
+!/tests/settings/README.md
 
 # KSE4 standalone deployment.
 /KSE4/*

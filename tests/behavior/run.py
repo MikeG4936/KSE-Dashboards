@@ -24,13 +24,16 @@ def instrument(source: str, variant: str) -> str:
     marker = source.rfind("\nreturn {")
     if marker < 0 or 'useLvgl' not in source[marker:]:
         raise ValueError("Expected final widget descriptor not found")
+    if "options    = {}" not in source[marker:] and "options={}" not in source[marker:]:
+        raise ValueError("Expected empty native option descriptor")
     namespace = "sensors." if "local sensors = {}" in source else ""
     exports = [f"{name}={namespace}{name}" for name in SENSORS]
     exports += [f"{name}={name}" for name in FUNCTIONS]
     exports += ["D=D", "A=A", "OPT=OPT", "S=S", "FC=FC", "voice=BATTERY_VOICE", "geometry=G",
-                "options=options", "config=function() return minFlightDur, SRC.motorSwitch end",
+                "options={}", "fixture=FixtureSettings", "config=function() return minFlightDur, SRC.motorSwitch end",
                 "theme=function() return C_BG, C_ACCENT, OPT.bgTransparent end"]
     return (HERE.joinpath("mock.lua").read_text() + "\n" + source[:marker]
+            + "\n" + HERE.joinpath("settings_fixture.lua").read_text()
             + "\n__test={" + ",".join(exports) + "}\n"
             + 'buildUi=function(w) if w then w.uiBuilt=true; w.ui=w.ui or {} end end\n'
             + 'updateUiState=function() end\n__variant="' + variant + '"\n'

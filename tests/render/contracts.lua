@@ -12,30 +12,54 @@ end
 lvgl={clear=function() objects={} end,label=object,rectangle=object,
       image=object,hline=object,vline=object,arc=object}
 local api=dofile(dashboardPath)
-assert(#api.options==11)
+assert(#api.options==0,"native descriptor must be empty")
 local opts={Theme=1,HeliType=1,CountSrc=1,BattRsv=20,MotorSw=99,RxPackMin="6.60",RxPackMax="8.40"}
 for name,value in pairs({Hspd=2200,Tspd=9000,Gov=4,Vbat=45.6,Vcel=3.8,["Cel#"]=12,
   Curr=30,Capa=1200,["Bat%"]=65,Tesc=75,Vbec=7.4,RQly=100,["PID#"]=1,["RTE#"]=2,
   RPM=3100,RxBt=11.4,Temp=65,["tx-voltage"]=7.8}) do
   __mock.values[name]={value=value}
 end
-local widget=api.create({x=0,y=0,w=LCD_W,h=LCD_H},opts)
+local widget=api.fixture.create({x=0,y=0,w=LCD_W,h=LCD_H},opts)
 local maxRefresh=0
-for mode=1,3 do
-  opts.HeliType=mode;__mock.modelName=mode==3 and "M2 Fixture" or "Fixture"
-  for theme=1,22 do
-    opts.Theme=theme
-    api.update(widget,opts)
-    __mock.now=__mock.now+10
-    api.refresh(widget,nil,nil)
-    assert(#objects>20,"renderer did not build")
-    for _,item in ipairs(objects) do
-      for key,value in pairs(item.properties) do
-        -- LVGL evaluates dynamic properties after callbacks return.
-        if type(value)=="function" then value=value() end
-        if key=="w" or key=="h" then assert(type(value)=="number" and value>=0,"invalid dimension") end
+local function checkObjects()
+  assert(#objects>20,"renderer did not build")
+  for _,item in ipairs(objects) do
+    for key,value in pairs(item.properties) do
+      -- LVGL evaluates dynamic properties after callbacks return.
+      if type(value)=="function" then value=value() end
+      if key=="w" or key=="h" then assert(type(value)=="number" and value>=0,"invalid dimension") end
+      if key=="text" and type(value)=="string" then
+        assert(not string.find(value,"ADD M1",1,true),"retired manual OMP name prompt rendered")
       end
     end
+  end
+end
+for _,mode in ipairs({1,2,5}) do
+  opts.HeliType=mode;__mock.modelName="Fixture"
+  if mode==5 then
+    __setOmpSources(3,3.8)
+    __mock.rssi=100
+    api.fixture.apply(widget,opts)
+    __mock.now=__mock.now+20
+    api.refresh(widget,nil,nil)
+    __mock.now=__mock.now+10
+    api.refresh(widget,nil,nil)
+    assert(not __ompTest(),"unresolved OMP render must precede voltage confirmation")
+    checkObjects()
+    for _=1,4 do
+      __mock.now=__mock.now+20
+      api.background(widget)
+    end
+    local ready,name,cells=__ompTest()
+    assert(ready and name=="OMP M2" and cells==3,"OMP render fixture must confirm real source identity")
+    __mock.values.RPM.value=3100
+  end
+  for theme=1,22 do
+    opts.Theme=theme
+    api.fixture.apply(widget,opts)
+    __mock.now=__mock.now+10
+    api.refresh(widget,nil,nil)
+    checkObjects()
     __mock.now=__mock.now+10
     local cost=measure(api.refresh,widget,nil,nil)
     maxRefresh=math.max(maxRefresh,cost)
@@ -46,7 +70,9 @@ end
 -- Inspect the real retained transmitter icon via test-only source exports.
 -- Native color must be independent of KSE's theme, and zero must hide both.
 for _,theme in ipairs({1,2}) do
-  opts.Theme=theme;api.update(widget,opts)
+  opts.Theme=theme;api.fixture.apply(widget,opts)
+  -- Layout allocation and instrument population occupy successive callbacks.
+  api.refresh(widget,nil,nil)
   for _,case in ipairs({{6.2,0,nil},{6.6,LCD_W==800 and 5/28 or 4/20,0xF44336},
                         {7.4,LCD_W==800 and 15/28 or 11/20,0xFFC107},
                         {7.5,LCD_W==800 and 17/28 or 12/20,0x4CAF50},
@@ -67,6 +93,19 @@ for _,theme in ipairs({1,2}) do
              "transmitter fill must stay anchored to bottom")
     end
   end
+  local savedGeneral=getGeneralSettings
+  getGeneralSettings=function() return {battMin=8.4,battMax=6.2} end
+  __mock.values["tx-voltage"]={value=7.4}
+  __mock.now=__mock.now+100
+  api.refresh(widget,nil,nil)
+  assert(__txTestUi(widget).txFill.hidden==true,"invalid native radio range must hide fill")
+  getGeneralSettings=nil
+  __mock.now=__mock.now+100
+  api.refresh(widget,nil,nil)
+  assert(__txTestUi(widget).txFill.hidden==true,"missing native battery API must hide fill")
+  getGeneralSettings=savedGeneral
+  __mock.now=__mock.now+100
+  api.refresh(widget,nil,nil)
   -- Native signal bars use monochrome foreground/inactive theme colors.
   -- RQly stays 100 above: only the firmware's radio RSSI determines the icon.
   __mock.values["tx-voltage"]={value=7.4}

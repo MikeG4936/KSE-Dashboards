@@ -16,18 +16,19 @@ def instrument(source, scenario):
     if marker < 0 or "useLvgl" not in source[marker:]:
         raise ValueError("Final widget descriptor not found")
     exports = """
-__integration={create=create,update=update,refresh=refresh,background=background,
+__integration={fixture=FixtureSettings,create=create,update=update,refresh=refresh,background=background,
   clear=clearFrameCache,count=getFlightCount,state=flightStore,A=A,OPT=OPT}
 -- Isolate local-counter wiring from renderer and RF Tool hosting.
 buildUi=function() end
 updateUiState=function() end
+batteryProfiles.prepare=function() end
 batteryProfiles.service=function() end
 batteryProfiles.flightSourceChanged=function() end
 batteryProfiles.reset=function() end
 """
     return (ROOT.joinpath("tests/behavior/mock.lua").read_text() + "\n"
             + HERE.joinpath("mock.lua").read_text() + "\n" + source[:marker]
-            + exports + '\n__scenario="' + scenario + '"\n'
+            + ROOT.joinpath("tests/behavior/settings_fixture.lua").read_text() + exports + '\n__scenario="' + scenario + '"\n'
             + HERE.joinpath("integration.lua").read_text())
 
 

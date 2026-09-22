@@ -50,7 +50,7 @@ local function getModelName()
   local v = F.modelName
   if v ~= nil then return v end
   local info = getModelInfo()
-  local n = OPT.ompAuto and (OMP_AUTO.name or "OMP AUTO")
+  local n = OPT.ompAuto and (OMP_AUTO.name or "OMPHOBBY")
             or (OPT.autoHeliType and AUTO_HELI.name or (info and info.name or nil))
   if not n or n == "" then n = "MODEL" end
   v = (string.gsub(n, ",", " "))
@@ -138,21 +138,6 @@ function sensors.getCellCount()
     if v == 2 then
       D.isLiHV = true
       A.liHvHighSamples = SAFETY.liHvConfirmSamples
-    end
-  elseif OPT.heliType == HELI_OMPHOBBY then
-    -- OMP receivers do not stream cell count. Model names containing M2 are
-    -- 3S; names containing M1 are 2S LiHV (8.5-8.7 V fully charged). Match
-    -- case-insensitively anywhere and make the M1 chemistry deterministic
-    -- instead of waiting for a high-voltage sample to identify it.
-    local modelName = string.upper(getModelName())
-    if string.find(modelName, "M2", 1, true) then
-      v = 3
-    elseif string.find(modelName, "M1", 1, true) then
-      v = 2
-      D.isLiHV = true
-      A.liHvHighSamples = SAFETY.liHvConfirmSamples
-    else
-      v = 0
     end
   else
     v = sensors.getSensorNumber("cellCount") or 0
@@ -358,9 +343,8 @@ function sensors.txBatteryState()
   end
   local volts = sensors.getTxVolt()
   if not (volts > 0 and volts <= 20) then return nil end
-  -- Retain saved slot 2 as a compatibility fallback; the radio range wins.
-  local low = sensors.txMin or (txIsLiIon and 62 or 70)
-  local high = sensors.txMax or 84
+  local low, high = sensors.txMin, sensors.txMax
+  if not low or not high then return nil end
   -- Use the physical display, not the widget zone, for native layout scaling.
   local width, green, amber = 20, 12, 5
   if G.screenW == 800 then width, green, amber = 28, 17, 7 end

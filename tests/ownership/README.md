@@ -1,5 +1,7 @@
 # Dashboard ownership callback fixtures
 
+Configuration in these domain fixtures enters through the explicit test-only [saved-settings helper](../behavior/settings_fixture.lua). It seeds an in-memory per-model record using the production schema/defaults and calls the real `create(zone)` callback; transitions use the owner-guarded `G.updateSettings` engine boundary. The helper replaces only settings attachment and the native-editor API requirement so these radio/RF/renderer mocks need no fake editor support. It never repurposes native `create`/`update` option payloads. The [settings suite](../settings/README.md) covers the actual editor and persistence path.
+
 Run from the repository root using the pinned EdgeTX Lua runner described in
 [tools/edgetx](../../tools/edgetx/README.md):
 
@@ -21,13 +23,13 @@ ordinary ownership and saved-model lifecycle fixtures in separate fresh processe
 Assertions cover:
 
 - Initial ownership, ordinary local threshold counting and persistence.
-- Duplicate creation and option updates preserving the active options, alerts,
+- Duplicate creation and native callback payloads preserving the active settings, alerts,
   statistics, lease, count file, and controller state; inactive widgets remain
   lightweight and cannot admit MSP.
 - Background activity renewing the active owner's lease. A duplicate's background
   callback never claims ownership, including after expiration.
 - Foreground takeover at 500 EdgeTX ticks, with no takeover at 499 ticks or from
-  duplicate creation alone. The new owner initializes its saved options.
+  duplicate creation alone. The new owner loads the current saved model configuration.
 - Handoff retiring pending owned MSP entries while preserving foreign entries,
   and late acknowledgments being unable to stage the old operation.
 - Stale picker callbacks, MSP admission, option updates, foreground callbacks, and

@@ -7,7 +7,7 @@ local path="/flights-count.csv"
 local header="model_name,flight_count\n# api_ver=1\n"
 local zone={x=0,y=0,w=800,h=480}
 local function options(reserve)
-  return {Theme=1,TxBatt=1,HeliType=1,BattRsv=reserve,CountSrc=1,MinFlight=30,
+  return {Theme=1,HeliType=1,BattRsv=reserve,CountSrc=1,MinFlight=30,
           RxPackMin="6.60",RxPackMax="8.40",MotorSw=99}
 end
 local menu,proxy,clears,labels,lastLabel
@@ -47,7 +47,7 @@ end
 
 local first,second=setup("model-a.yml")
 local a,b=first.audit,second.audit
-local old=first.create(zone,options(20))
+local old=first.fixture.create(zone,options(20))
 tick(first,old,1010,0)
 tick(first,old,1020,30)
 eq("A qualifies count before saved-model switch",a.count(),8)
@@ -74,7 +74,7 @@ originalProxy:onStateChanged("armed")
 eq("provider event cannot update A before B is created",old.profileRfState,oldRfState)
 staleReply()
 eq("old ACK cannot continue before B is created",oldOperation.nextMessage,nil)
-local fresh=second.create(zone,options(35))
+local fresh=second.fixture.create(zone,options(35))
 local waiting=first.create(zone,options(40))
 eq("B create defers ownership until foreground",lease.widget==old,true)
 eq("B create stays lightweight",fresh.kseInitialized,nil)
@@ -159,7 +159,7 @@ eq("other same-model contender cannot steal winning lease",lease.widget==recreat
 
 -- On A->B->A, old A must stay obsolete even though its filename matches again.
 __mock.modelName="Fixture"; __mock.modelFile="model-a.yml"; __mock.now=1610
-local returned=second.create(zone,options(25))
+local returned=second.fixture.create(zone,options(25))
 seen=lease.seen; calls=#fs.calls
 beforeClears,beforeLabels=clears,labels
 tick(first,old,1611,0,true)
@@ -187,9 +187,9 @@ eq("obsolete A session cannot warn over new A after expiry",labels,beforeLabels)
 
 -- Display labels are mutable; they must not be treated as saved-model identity.
 first,second=setup("same-file.yml")
-old=first.create(zone,options(20)); lease=_G.__KSE_WIDGET_OWNER_V1
+old=first.fixture.create(zone,options(20)); lease=_G.__KSE_WIDGET_OWNER_V1
 __mock.modelName="Renamed display label"; __mock.now=1010
-fresh=second.create(zone,options(30))
+fresh=second.fixture.create(zone,options(30))
 tick(second,fresh,1011,0,true)
 eq("display-name edit does not bypass lease",lease.widget==old,true)
 tick(first,old,1020,0)
@@ -203,9 +203,9 @@ eq("display-name edit allows normal expired takeover",lease.widget==fresh,true)
 local invalid={false,"",42,{}}
 for index,value in ipairs(invalid) do
   first,second=setup(value)
-  old=first.create(zone,options(20)); lease=_G.__KSE_WIDGET_OWNER_V1
+  old=first.fixture.create(zone,options(20)); lease=_G.__KSE_WIDGET_OWNER_V1
   __mock.modelName="Other"; __mock.modelFile=value; __mock.now=1010
-  fresh=second.create(zone,options(30))
+  fresh=second.fixture.create(zone,options(30))
   tick(second,fresh,1011,0,true)
   eq("invalid filename "..index.." cannot fast transfer",lease.widget==old,true)
   tick(second,fresh,1499,0,true)
@@ -214,36 +214,36 @@ for index,value in ipairs(invalid) do
   eq("invalid filename "..index.." retains expired takeover",lease.widget==fresh,true)
 end
 first,second=setup(nil)
-old=first.create(zone,options(20)); lease=_G.__KSE_WIDGET_OWNER_V1
+old=first.fixture.create(zone,options(20)); lease=_G.__KSE_WIDGET_OWNER_V1
 __mock.modelName="Other"; __mock.modelFile="known-b.yml"; __mock.now=1010
-fresh=second.create(zone,options(30))
+fresh=second.fixture.create(zone,options(30))
 tick(second,fresh,1011,0,true)
 eq("missing previous filename cannot fast transfer",lease.widget==old,true)
 tick(second,fresh,1500,0,true)
 eq("missing previous filename retains expired takeover",lease.widget==fresh,true)
 
 first,second=setup(nil)
-old=first.create(zone,options(20)); lease=_G.__KSE_WIDGET_OWNER_V1
+old=first.fixture.create(zone,options(20)); lease=_G.__KSE_WIDGET_OWNER_V1
 __mock.modelName="Other"; __mock.now=1010
-fresh=second.create(zone,options(30))
+fresh=second.fixture.create(zone,options(30))
 tick(second,fresh,1499,0,true)
 eq("missing filename throughout retains 499-tick exclusion",lease.widget==old,true)
 tick(second,fresh,1500,0,true)
 eq("missing filename throughout permits expired takeover",lease.widget==fresh,true)
 
 first,second=setup("known-a.yml")
-old=first.create(zone,options(20)); lease=_G.__KSE_WIDGET_OWNER_V1
+old=first.fixture.create(zone,options(20)); lease=_G.__KSE_WIDGET_OWNER_V1
 __mock.modelFile=nil
 tick(first,old,1010,0)
 eq("transient missing filename cannot renew known owner",lease.seen,1000)
 __mock.modelFile="known-b.yml"; __mock.now=1020
-fresh=second.create(zone,options(30))
+fresh=second.fixture.create(zone,options(30))
 tick(second,fresh,1021,0,true)
 eq("same display label with changed filename transfers immediately",lease.widget==fresh,true)
 
 -- Separately exercise a real KSE request already consumed by upstream transport.
 first,second=setup("active-a.yml")
-old=first.create(zone,options(20)); old.profileRfState="disarmed"
+old=first.fixture.create(zone,options(20)); old.profileRfState="disarmed"
 eq("active transport case starts real operation",first.audit.profiles.begin(old,"select",2),true)
 oldOperation=old.profileOperation
 oldMessage=table.remove(rf2.mspQueue.messageQueue,1)
@@ -255,7 +255,7 @@ eq("ACK observes model switch before B exists",old.profileOperation,nil)
 eq("model change preserves active owned transaction",rf2.mspQueue.currentMessage==oldMessage,true)
 eq("model change preserves foreign pending transaction",rf2.mspQueue.messageQueue[1]==foreign,true)
 eq("active old ACK cannot stage verification",oldOperation.nextMessage,nil)
-fresh=second.create(zone,options(30))
+fresh=second.fixture.create(zone,options(30))
 tick(second,fresh,1010,0,true)
 eq("new owner initializes while upstream old request stays active",fresh.kseInitialized,true)
 eq("new owner leaves old upstream transaction intact",rf2.mspQueue.currentMessage==oldMessage,true)

@@ -21,21 +21,15 @@ local function getValSrc(srcId)
   if type(v) == "table" then v = v.value end
   return tonumber(v)
 end
--- Parse an Rx-pack voltage typed as text ("6.60"), tolerant of whether EdgeTX
--- text entry offers a ".", and backward-compatible with the old integer scale:
---   <=15 -> volts as typed (6.6) ; 16-150 -> old tenths (66->6.6) ; >150 -> hundredths (660->6.6)
-local function parseVolt(s, default)
-  local str = string.match(tostring(s or ""), "^%s*(.-)%s*$")
-  local validText = string.match(str, "^%d+$")
-                    or string.match(str, "^%d+[.,]%d+$")
-                    or string.match(str, "^[.,]%d+$")
-  if not validText then return default end
-  str = string.gsub(str, ",", ".")
-  local v = tonumber(str)
-  if not v or v <= 0 then return default end
-  if v > 150 then return v / 100 end
-  if v > 15  then return v / 10  end
-  return v
+-- Settings store and numeric editor use volts with exactly two decimals.
+local function parseVolt(value, default)
+  if type(value)~="string" or not string.match(value,"^%d%.%d%d$") then return default end
+  return tonumber(value) or default
+end
+local function validRxRange(low, high)
+  -- EdgeTX uses 32-bit floats: 8.40 - 8.30 can be just below 0.10.
+  return low ~= nil and high ~= nil and low >= 4 and high <= 9
+         and high - low + 0.000001 >= 0.1
 end
 local getFieldInfoFn = getFieldInfo
 local getSourceNameFn = getSourceName
@@ -43,10 +37,8 @@ local function isPhysicalMotorSource(src)
   local id = tonumber(src)
   if not id or id == 0 then return false end
 
-  local inspected = false
   if getFieldInfoFn then
     local ok, info = pcall(getFieldInfoFn, id)
-    inspected = ok
     if ok and type(info) == "table" then
       local name = string.upper(tostring(info.name or ""))
       local desc = string.upper(tostring(info.desc or ""))
@@ -57,46 +49,18 @@ local function isPhysicalMotorSource(src)
   end
   if getSourceNameFn then
     local ok, name = pcall(getSourceNameFn, id)
-    inspected = inspected or ok
     if ok and string.match(string.upper(tostring(name or "")), "^S[A-Z]$") then
       return true
     end
   end
 
-  -- Older supported firmwares may not expose source inspection. A configured,
-  -- readable SOURCE is still safer than silently falling back to a channel.
-  return not inspected
+  return false
 end
 -- @include variant:option_theme.lua
-function G.addFuelOption(options)
-  -- EdgeTX 2.11 stores only ten widget settings; 2.12 increases this to 50.
-  -- Keep the older descriptor unchanged instead of relying on truncation.
-  if not getVersion then return end
-  local _, _, major, minor = getVersion()
-  if type(major) == "number" and type(minor) == "number"
-     and (major > 2 or (major == 2 and minor >= 12)) then
-    -- Build once with the descriptor; native settings handle wheel selection.
-    local durations = {"Off"}
-    for seconds = 15, 1800, 15 do
-      durations[#durations+1] = string.format("%02d:%02d",
-                                            math.floor(seconds / 60), seconds % 60)
-    end
-    options[#options+1] = {"FuelCheck", CHOICE, 25, durations} -- 06:00
-  end
-end
 local function applyOptions(opts)
   opts = opts or {}
   G.applyOptionTheme(tonumber(opts.Theme) or 0)
-  local rawBatt = tonumber(opts and opts.TxBatt) or 0
-  txIsLiIon = (rawBatt == 2)
-  local rawDur = tonumber(opts and (opts.MinFlight
-                                    or opts["KSE Counter Min (sec)"]
-                                    or opts["Min. Flight Time (sec)"]
-                                    or opts.TopMinDur))
-                 or TOPBAR_MIN_DUR_DEFAULT
-  if rawDur < 0 then rawDur = math.abs(rawDur) end
-  if rawDur < 1 then rawDur = 1 end
-  minFlightDur = rawDur
+  minFlightDur = math.max(1, math.min(120, tonumber(opts.MinFlight) or TOPBAR_MIN_DUR_DEFAULT))
   OPT.flightCounter = FC.ROTORFLIGHT
   OPT.simTelemetry = false
   local sgInfo = type(getFieldInfo) == "function" and getFieldInfo("SG") or nil
@@ -105,13 +69,12 @@ local function applyOptions(opts)
   if opts then
     -- The Motor Switch is the only mapped source. Rotorflight Gov/Hspd or OMP
     -- RPM telemetry validates what a movement means; other sensors auto-detect.
-    SRC.motorSwitch = opts.MotorSw or opts["Motor Switch"]
-                      or defaultMotorSwitch
-    -- Append OMP Auto=5 without moving existing choices or option slots.
+    SRC.motorSwitch = opts.MotorSw or defaultMotorSwitch
+    -- OMP Auto resolves to the shared OMP telemetry implementation.
     -- OMPHOBBY shares the percentage bar but has its own telemetry contract.
-    local bb = tonumber(opts.HeliType or opts["Heli Type"]) or 1
+    local bb = tonumber(opts.HeliType) or 1
     if not (bb >= 1 and bb <= OMP_AUTO.option) or bb > math.floor(bb) then bb = 1 end
-    OPT.ompAuto = bb == OMP_AUTO.option
+    OPT.ompAuto = bb == OMP_AUTO.option or bb == HELI_OMPHOBBY
     if OPT.ompAuto then bb = HELI_OMPHOBBY end
     local automatic = bb == AUTO_HELI.option
     if automatic then
@@ -124,22 +87,18 @@ local function applyOptions(opts)
     OPT.autoHeliType = automatic
     OPT.heliType = bb
     OPT.battBarMode = (bb == HELI_NITRO) and 1 or 0
-    OPT.reservePct  = tonumber(opts.BattRsv or opts["Batt Reserve %"]) or 20
+    OPT.reservePct  = tonumber(opts.BattRsv) or 20
     if OPT.reservePct < 0 then OPT.reservePct = 0 end
     if OPT.reservePct > 50 then OPT.reservePct = 50 end
     OPT.battVoice   = (opts.BattVoice == 1 or opts.BattVoice == true)
-    local fuelSeconds = 360 -- fixed reminder on older ten-option firmware
-    if opts.FuelCheck ~= nil then
-      local choice = opts.FuelCheck
-      -- EdgeTX resets a saved slot when its type changes. Until reselected,
-      -- zero/invalid indices stay Off; do not reinterpret old duration text.
-      fuelSeconds = type(choice) == "number" and choice >= 1 and choice <= 121
-                    and choice <= math.floor(choice) and (choice - 1) * 15 or 0
-    end
+    -- The editor uses one-based 15-second steps: 1=Off, 25=06:00.
+    local choice = opts.FuelCheck
+    if choice == nil then choice = 25 end
+    local fuelSeconds = type(choice) == "number" and choice >= 1 and choice <= 121
+                        and choice <= math.floor(choice) and (choice - 1) * 15 or 0
     if OPT.fuelCheckSeconds ~= fuelSeconds then A.fuelCheckArmed = nil end
     OPT.fuelCheckSeconds = fuelSeconds
-    -- CountSrc retains its original slot and persisted type.
-    local countMode = tonumber(opts.CountSrc or opts["Flight Counter"])
+    local countMode = tonumber(opts.CountSrc)
     if countMode ~= FC.RADIO
        and countMode ~= FC.ROTORFLIGHT then
       countMode = FC.ROTORFLIGHT
@@ -149,10 +108,7 @@ local function applyOptions(opts)
     local parsedMax = parseVolt(opts.RxPackMax or "8.40", nil)
     OPT.rxPackMin = parsedMin or 6.6
     OPT.rxPackMax = parsedMax or 8.4
-    OPT.rxPackValid = parsedMin ~= nil and parsedMax ~= nil
-                       and parsedMin >= SAFETY.rxPackMinAllowed
-                       and parsedMax <= SAFETY.rxPackMaxAllowed
-                       and (parsedMax - parsedMin) >= 0.1
+    OPT.rxPackValid = validRxRange(parsedMin, parsedMax)
   end
   A.motorSourcePhysical = isPhysicalMotorSource(SRC.motorSwitch)
   A.motorSourceReadable = A.motorSourcePhysical

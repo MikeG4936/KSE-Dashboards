@@ -4,7 +4,7 @@ __runIntegration=function()
   local header="model_name,flight_count\n# api_ver=1\n"
   local old=header.."Fixture,7\nOther,20\n"
   local updated=header.."Fixture,8\nOther,20\n"
-  local opts={Theme=1,TxBatt=1,HeliType=1,BattRsv=20,CountSrc=1,MinFlight=30,
+  local opts={Theme=1,HeliType=1,BattRsv=20,CountSrc=1,MinFlight=30,
               RxPackMin="6.60",RxPackMax="8.40",MotorSw=99}
   local function eq(name,actual,expected)
     assert(actual==expected,name..": expected "..tostring(expected)..", got "..tostring(actual))
@@ -23,7 +23,7 @@ __runIntegration=function()
     m.now=now; m.timer={start=0,value=seconds}; t.background(w)
   end
   local function create()
-    w=t.create({x=0,y=0,w=800,h=480},opts)
+    w=t.fixture.create({x=0,y=0,w=800,h=480},opts)
   end
   local function qualify()
     create(); callback(0,0); callback(10,30)
@@ -68,12 +68,12 @@ __runIntegration=function()
     eq("no second threshold increment",t.count(),8)
   elseif __scenario=="retry" then
     exhaust()
-    opts.CountSrc=2; t.update(w,opts)
+    opts.CountSrc=2; t.fixture.apply(w,opts)
     local before=#fs.calls
     callback(2000,30)
     eq("FC selection preserves pending count",t.state.cache.Fixture,8)
     eq("exhausted retry budget prevents further IO in FC mode",#fs.calls,before)
-    opts.CountSrc=1; t.update(w,opts)
+    opts.CountSrc=1; t.fixture.apply(w,opts)
     eq("local reload resets retry budget",t.state.attempts,0)
     callback(2010,30)
     eq("local reload retry persisted",fs.files[path],updated)
@@ -108,17 +108,17 @@ __runIntegration=function()
     eq("FC mode cache never loaded",t.state.cache,nil)
     eq("FC mode source unchanged",fs.files[path],old)
   elseif __scenario=="fc_pending" then
-    qualify(); opts.CountSrc=2; t.update(w,opts)
+    qualify(); opts.CountSrc=2; t.fixture.apply(w,opts)
     eq("FC switch retains dirty real event",t.state.dirty,true)
     callback(20,30)
     eq("FC next callback persists earlier local event",fs.files[path],updated)
     eq("FC next callback clears dirty",t.state.dirty,false)
     callback(30,180)
     eq("FC callbacks do not recount local event",t.state.cache.Fixture,8)
-    opts.CountSrc=1; t.update(w,opts); callback(40,180)
+    opts.CountSrc=1; t.fixture.apply(w,opts); callback(40,180)
     eq("returning to local after save no recount",t.count(),8)
   elseif __scenario=="fc_pending_failure" then
-    qualify(); opts.CountSrc=2; t.update(w,opts)
+    qualify(); opts.CountSrc=2; t.fixture.apply(w,opts)
     fs.faults["write:"..path..".tmp"]="nil"; callback(20,30)
     eq("FC failed pending save retains real count",t.state.cache.Fixture,8)
     eq("FC failed pending save remains dirty",t.state.dirty,true)

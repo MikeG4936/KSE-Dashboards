@@ -101,8 +101,8 @@ local A = {
   lastDataTick = -1,
 }
 local HELI_ELECTRIC, HELI_NITRO, HELI_OMPHOBBY = 1, 2, 3
--- Append Auto Elec/Nitro without changing the three persisted manual CHOICE values.
--- Keep name inference separate so another naming provider can be added later.
+-- Stable saved IDs are independent of menu order. Rotorflight name inference
+-- and OMP telemetry identification remain separate providers.
 local AUTO_HELI = {
   option=4, confirmTicks=30, ready=false, name=nil,
   status="WAITING FOR FC NAME",
@@ -209,6 +209,5 @@ local SAFETY = {
 -- Source metadata distinguishes a missing zero from a live value. This matters
 -- most for Smart Fuel: Bat%=0 is meaningful only when a flight pack is actually
 -- present, while positive current values can stand on their own.
-local txIsLiIon = false
 local F = {}
 local RESOLVED = {}

@@ -6,9 +6,9 @@ KSE4 and KSE5 show your RC helicopter’s live flight and battery readings on yo
 
 ## Requirements
 
-- **Radio:** RadioMaster TX15/MAX, GX15/MAX, TX16S MKII/MAX or TX16S MK3/MAX running EdgeTX. Both dashboards support 800 × 480, 480 × 320 and 480 × 272 screens.
+- **Radio:** RadioMaster TX15/MAX, GX15/MAX, TX16S MKII/MAX or TX16S MK3/MAX running EdgeTX **2.12.4** (or a later 2.12 patch with the required LVGL APIs). Both dashboards support 800 × 480, 480 × 320 and 480 × 272 screens.
 - **Rotorflight models:** Rotorflight 2.3 on the helicopter’s flight controller (FC), plus the complete official Rotorflight 2.3 EdgeTX Lua package on the radio.
-- **OMPHOBBY models:** a supported model with the [OMP telemetry sensors](#omphobby-telemetry). RF Tool is not required for either OMP mode. OFS3 firmware requires ExpressLRS **3.5.6 or newer**; this minimum does **not** apply to OFS3+. [OMP Auto](#one-radio-model-for-omp-m1-and-m2) needs CRSF telemetry, EdgeTX **2.11.2+** and ExpressLRS **3.5.5+** when using ELRS.
+- **OMPHOBBY models:** a supported model with the [OMP telemetry sensors](#omphobby-telemetry). RF Tool is not required for OMPHOBBY. OFS3 firmware requires ExpressLRS **3.5.6 or newer**; this minimum does **not** apply to OFS3+. Automatic M1/M2 identification requires CRSF telemetry with both `RxBt` and `Volt`.
 
 ## Installation and first setup
 
@@ -42,15 +42,17 @@ Keep all files and the `BatterySounds/` folder together. Do not rename the dashb
 
 ### 3. Add one widget and set the essentials
 
-Add **KSE4 or KSE5** to a full-screen telemetry page. Configure **only one KSE widget per model, across all its telemetry screens**. Turn off EdgeTX trim sliders and the page’s top bar to give the dashboard the full area.
+Select EdgeTX’s **App mode** layout and add **KSE4 or KSE5**. Configure **only one KSE widget per model, across all its telemetry screens**. App Mode gives the dashboard the full area and removes the native top bar and trim sliders.
 
-Open the widget settings and select:
+Long-press the widget to activate it. EdgeTX consumes that first hold; once activated, **hold ENTER/the scroll wheel** or **long-press and release the dashboard again** to open KSE Settings. An ordinary layout can reach the same active state through **Full screen**. The native **Widget settings** editor is no longer used.
 
-- **Heli Type:** Electric, Nitro or OMPHOBBY to match your helicopter, or [OMP Auto](#one-radio-model-for-omp-m1-and-m2) for a shared M1/M2 model.
+Set these essentials (in **Model setup** and **Flight counting** in the new menu):
+
+- **Helicopter type:** Electric, Nitro, [Auto Elec/Nitro](#auto-helicopter-type), or [OMPHOBBY](#one-radio-model-for-omp-m1-and-m2). OMPHOBBY identifies M1/M2 automatically.
 - **Motor Switch:** the whole physical switch, such as `SG`, not an individual switch position or output channel.
 - **Flight Counter:** your preferred counter; complete its setup in step 5.
 
-The transmitter battery icon automatically uses the radio's EdgeTX **Battery range**. Set battery reserve and voice as desired. For Nitro, set the receiver-pack voltage limits. See [Settings](#settings) for the available options.
+The transmitter battery icon uses the radio's EdgeTX **Battery range**. If that range is unavailable or invalid, its fill stays empty. Set battery reserve and voice as desired. For Nitro, set the receiver-pack voltage limits. See [Settings](#settings) for the available options.
 
 ### 4. Configure and discover telemetry
 
@@ -79,7 +81,7 @@ Follow the setup for your chosen counter. **OMPHOBBY uses KSE Counter.**
 | Counter | Setup |
 | --- | --- |
 | **Rotorflight FC** (default) | Enable model statistics in Rotorflight/RF Tool and choose the minimum armed time for a flight to count. Confirm `ARM` is discovered. |
-| **KSE Counter** | Set EdgeTX **Timer 1** to run when your motor switch is on. Set **KSE Counter Min (sec)** to the shortest flight you want counted. Reset Timer 1 between flights. |
+| **KSE Counter** | Set EdgeTX **Timer 1** to run when your motor switch is on. Set **Min flight time** to the shortest flight you want counted. Reset Timer 1 between flights. |
 
 ### 6. Check before flying
 
@@ -95,28 +97,63 @@ With the motor still physically unable to start:
 
 When moving from **StacyDashV4**, remove its widget from your telemetry screens before adding KSE4 or KSE5.
 
-1. Back up your KSE folders and custom model images. Keep `/flights-count.csv`, `/flights-count.csv.bak` and `/flights-count.csv.tmp` if present; **never replace existing history with the supplied starter file**.
+1. Back up your KSE folders, custom model images and `/KSE/Settings/` if present. Keep `/flights-count.csv`, `/flights-count.csv.bak` and `/flights-count.csv.tmp` if present; **never replace existing history with the supplied starter file**.
 2. Copy the updated dashboard folder, keeping your customized `default.png` if you use one. Remove any old KSE `main.luac` and restart EdgeTX.
 3. Keep the complete, compatible RF Tool package installed for Rotorflight models and disable any old `rf2bg` special/global function. Revisit telemetry setup if required sensors are missing. If you delete all sensors before rediscovery, recheck alarms, logging and model functions that use them.
-4. Check saved widget settings and repeat the short bench check above. Existing manual Heli Type choices stay manual; select Auto Elec/Nitro or OMP Auto explicitly if wanted.
+4. **Coming from native Widget Settings or the first menu prototype? Set up KSE again from scratch.** Previous native values cannot be imported. Version-1 files are left untouched while this build uses separate version-2 files. Review every page, then **Save & close**. Existing version-2 menu settings reload automatically, including with the reordered helicopter choices. Flight history and custom images are unaffected.
+5. Repeat the short bench check above. Future restarts reload the settings saved through this version of the menu.
+
 
 ## Settings
 
-Both dashboards have the same settings. Their colors and a few setting names differ. **Fuel Check Timer - Nitro** requires EdgeTX 2.12 or newer.
+Both dashboards have the same functional settings and separate themes. Configuration is managed entirely through the fullscreen menu.
+
+### Fullscreen settings menu
+
+On EdgeTX **2.12.4** (also enabled for later 2.12 patch releases with the required APIs), use **hold ENTER/wheel** or a stationary **long-press of about 0.7 seconds, then release** anywhere on the dashboard. There is no permanent settings button. Close an open battery-profile picker first. Other firmware/API combinations display the EdgeTX requirement instead of exposing a native settings fallback.
+
+| Page | Contents |
+| --- | --- |
+| **Model setup** | Helicopter type, physical motor switch |
+| **Power & alerts** | Battery reserve, battery voice; **Nitro setup** opens receiver-pack limits and fuel reminder |
+| **Flight counting** | Counter source, minimum flight duration |
+| **Appearance** | This dashboard’s theme, with a small preview |
+| **Backup & transfer** | Export/import a new-menu companion file; reset the draft to defaults |
+
+Touch fields or turn/press the wheel to edit. **Back / short EXIT** leaves an editor or popup first, then returns to the previous page. Changes remain in a draft across pages. **Save & close** validates, saves and applies the entire draft; a write failure retains the draft and previous live settings. Leaving the settings home with changes offers **Save**, **Discard** or **Continue editing**. A `*` marks unsaved changes. Long EXIT remains EdgeTX’s fullscreen escape and does not implicitly save. Model changes and leaving fullscreen abandon an uncommitted draft. If an explicit Save already completed its final file promotion, the saved settings remain saved.
+
+To use EdgeTX’s normal **Model** and **SYS** shortcuts, hold **EXIT** to release the active widget first. EdgeTX routes those keys to Lua while a widget is active fullscreen, so they do not open the normal radio pages there. Save settings before using long EXIT, which leaves fullscreen without a save prompt.
+
+Local settings remain editable while armed and work offline. Telemetry, alerts and counters continue in the background. The existing requirement for confirmed disarm before any new KSE-owned FC request is unchanged. Native fields use EdgeTX’s control styling; KSE supplies themed category buttons, opaque page backgrounds and a draft-only theme preview.
+
+### Saved settings and model transfers
+
+A new setup starts with KSE defaults. The first **Save & close** creates a version-2 file under **`/KSE/Settings/`**, identified by the saved EdgeTX model filename. KSE4 and KSE5 share functional values for that model while retaining separate theme entries. Switching variants starts the other variant with **Dark** until you save its own theme. The reordered helicopter menu preserves saved choices: either former OMP selection now uses automatic OMPHOBBY identification; other values retain their meanings.
+
+The native widget descriptor is empty, so previous widget values are neither read nor copied. To start again later, use **Backup & transfer → Reset draft to defaults**, review and explicitly Save. That resets the shared functional values and the active dashboard’s theme; the other dashboard’s saved theme remains separate. Model names and filenames are different: renaming the display name keeps settings, but cloning/restoring under another filename needs a companion import.
+
+- **Whole SD backup:** include `/KSE/Settings/`, including any `.bak` and `.tmp` files.
+- **Individual model backup/transfer:** use **Backup & transfer → Export saved KSE settings**. Export copies the saved configuration, including saved themes for both variants; it excludes unsaved edits. Keep the `.kse` companion from `/KSE/Settings/Exports/` alongside the EdgeTX model backup.
+- **Restore or clone:** restore the EdgeTX model, put the companion in `/KSE/Settings/Exports/`, open that destination model’s KSE menu, select the companion and press **Import selected companion**. Review the motor switch, especially between radios, then **Save & close**. Import binds to the current model without changing the source model’s settings.
+
+EdgeTX’s model-only backup does **not** bundle KSE’s companion automatically. Keep `/flights-count.csv` separately as before. Files are created only when saving/exporting; installing either dashboard folder remains sufficient. For missing/damaged files, see [settings recovery](docs/settings-menu.md#recovery).
+
+### Setting reference
+
+These are the values available in the new menu.
 
 | Setting | Default | What it controls |
 | --- | --- | --- |
 | **Theme** | Dark | Dashboard colors. Each has 22 choices; use the [theme gallery](theme-gallery/README.md) to compare them. KSE4 includes transparent themes; KSE5 uses solid backgrounds. |
-| **TX Batt Fallback** | LiPo | Used only if EdgeTX cannot supply a valid radio battery range: 2S LiPo uses 7.0–8.4 V; 2S Li-Ion uses 6.2–8.4 V. Normally leave this alone. The saved slot is retained to preserve your other settings. |
-| **KSE Counter Min (sec)** | 20 | How long Timer 1 must run before KSE counts a flight. Applies only to KSE Counter. |
-| **Heli Type** | Electric | Electric, Nitro or OMPHOBBY; [Auto Elec/Nitro](#auto-helicopter-type) for Rotorflight name-based selection; [OMP Auto](#one-radio-model-for-omp-m1-and-m2) for automatic M1/M2 selection. |
-| **Batt Reserve %** / **Battery Reserve %** | 20 | Battery reserve for Electric/OMP: with 20% reserve, the dashboard shows 0% when 20% remains. Range 0–50%; does not affect Nitro. |
+| **Min flight time** | 20 | How long Timer 1 must run before KSE counts a flight. Applies only to KSE Counter. |
+| **Heli Type** | Electric | Electric, Nitro, [Auto Elec/Nitro](#auto-helicopter-type) for Rotorflight name-based selection, then [OMPHOBBY](#one-radio-model-for-omp-m1-and-m2) for automatic M1/M2 selection. |
+| **Battery reserve** | 20 | Battery reserve for Electric/OMP: with 20% reserve, the dashboard shows 0% when 20% remains. Range 0–50%; does not affect Nitro. |
 | **Battery Voice** | Off | Spoken battery percentages for Electric/OMP and repeating critical-battery warnings. Vibration warnings can still work with voice off. |
-| **Rx Pack Minimum - Nitro** | 6.60 V | Nitro voltage shown as 0%; minimum allowed is 4.0 V. |
-| **Rx Pack Maximum - Nitro** | 8.40 V | Nitro voltage shown as 100%; at most 9.0 V and at least 0.1 V above the minimum. |
+| **Receiver pack min V** (Nitro) | 6.60 V | Nitro voltage shown as 0%; minimum allowed is 4.0 V. |
+| **Receiver pack max V** (Nitro) | 8.40 V | Nitro voltage shown as 100%; at most 9.0 V and at least 0.1 V above the minimum. |
 | **Motor Switch** | SG | Your physical motor switch, such as `SG`. It also helps silence repeating warnings after the motor stops. Set up Timer 1 separately for KSE counting. |
-| **Flight Counter** | Rotorflight FC | Count stored by the helicopter, or KSE counting with Timer 1. KSE5 calls the FC choice **RotorFlight**. |
-| **Fuel Check Timer - Nitro** | 06:00 | Nitro-only reminder after this much time on Timer 1. Use the wheel to select **Off** or **00:15–30:00** in 15-second steps. EdgeTX 2.12+ required. |
+| **Flight Counter** | Rotorflight FC | Count stored by the helicopter, or KSE counting with Timer 1.  |
+| **Fuel Check Reminder** (Nitro) | 06:00 | Nitro-only reminder after this much time on Timer 1. Use the wheel to select **Off** or **00:15–30:00** in 15-second steps. |
 
 ## Using the features
 
@@ -128,11 +165,11 @@ A volume indicator is deferred: stock EdgeTX 2.12.4 does not expose live radio v
 
 ### Battery readings and warnings
 
-The small transmitter battery icon follows EdgeTX 2.12.4's native **Radio Info** battery range, rounded fill levels and color transitions for your screen size. It keeps KSE's vertical shape and uses the native default green/amber/red shades in every theme. Changes to the radio battery range are picked up within one second of active dashboard refresh. Custom colors selected in a separate Radio Info widget are not copied. The radio's low-battery alarm remains independent of icon color.
+The small transmitter battery icon follows EdgeTX 2.12.4's native **Radio Info** battery range, rounded fill levels and color transitions for your screen size. It keeps KSE's vertical shape and uses the native default green/amber/red shades in every theme. Changes to the radio battery range are picked up within one second of active dashboard refresh. Custom colors selected in a separate Radio Info widget are not copied. If the radio range is missing or invalid, the icon leaves its fill empty. There is no separate KSE TX battery setting. The radio's low-battery alarm remains independent of icon color.
 
 In Electric and OMP modes, **Battery Reserve %** sets aside part of the pack: with a 20% reserve, the dashboard shows 0% when the helicopter reports 20% remaining. Rotorflight Smart Fuel is supported. If battery percentage is unavailable, KSE estimates it from voltage when possible.
 
-In Nitro mode, set **Rx Pack Minimum - Nitro** and **Rx Pack Maximum - Nitro** for your receiver battery. These are the voltages shown as 0% and 100%. Nitro does not use battery profiles.
+In Nitro mode, set **Receiver pack min V** (Nitro) and **Receiver pack max V** (Nitro) for your receiver battery. These are the voltages shown as 0% and 100%. Nitro does not use battery profiles.
 
 **Battery Voice** turns on spoken warnings. Moving your selected Motor Switch can silence the repeating critical-battery voice warning. Keep your normal radio battery alarms configured too.
 
@@ -162,11 +199,9 @@ The dashboard clock shows **EdgeTX Timer 1**, even with Rotorflight FC counting 
 
 ### Nitro fuel-check reminder
 
-Open **Fuel Check Timer - Nitro**, scroll to a duration such as **06:00** or **06:30**, and select it. The list runs from **00:15** to **30:00** in 15-second steps. Choose **Off** to disable the reminder.
+Open **Power & alerts → Nitro setup → Fuel Check Reminder**. Select **Off** or a duration from **00:15** to **30:00** in 15-second steps, such as **06:00** or **06:30**.
 
-After updating from the earlier text or minutes-only setting, select your duration again. If the field shows **-1**, the reminder is off until you choose a duration or **Off** from the list. Your other widget settings stay unchanged.
-
-In **Nitro** mode, KSE says **“Check fuel”** and vibrates once when Timer 1 reaches that elapsed duration. This also works when **Auto Elec/Nitro** selects Nitro. Electric and OMP helicopters do not receive this reminder. EdgeTX 2.11 uses a fixed six-minute reminder; upgrade to 2.12+ to adjust or disable it.
+In **Nitro** mode, KSE says **“Check fuel”** and vibrates once when Timer 1 reaches that elapsed duration. This also works when **Auto Elec/Nitro** selects Nitro. Electric and OMP helicopters do not receive this reminder.
 
 Set Timer 1 to run during powered flight and pause during idle or hold. Count-up and countdown timers both work. **Reset Timer 1 between flights.** The reminder works on other normal radio screens and is independent of **Battery Voice**. It is a prompt to check the tank visually, not a fuel-level measurement.
 
@@ -174,7 +209,7 @@ Set Timer 1 to run during powered flight and pause during idle or hold. Count-up
 
 **KSE Counter:** with the default 20-second setting, a flight is counted when Timer 1 has run for 20 seconds. Reset Timer 1 between flights. Count-up and countdown timers both work. If you add or recreate KSE after the timer has already passed the chosen duration, reset the timer before the next flight; that existing run will not be counted.
 
-History is shared between KSE4 and KSE5 and stored by model name. Auto Elec/Nitro uses the confirmed FC name instead of the EdgeTX model name; OMP Auto uses **OMP M1** and **OMP M2**. Counts are saved in `/flights-count.csv` on the SD card. KSE creates this file automatically when it saves the first flight; you do not need to copy the supplied starter file. For file errors, see [Count-history recovery](#count-history-recovery).
+History is shared between KSE4 and KSE5 and stored by model name. Auto Elec/Nitro uses the confirmed FC name instead of the EdgeTX model name; OMPHOBBY uses **OMP M1** and **OMP M2**. Counts are saved in `/flights-count.csv` on the SD card. KSE creates this file automatically when it saves the first flight; you do not need to copy the supplied starter file. For file errors, see [Count-history recovery](#count-history-recovery).
 
 **Rotorflight FC counter:** Rotorflight decides whether each flight lasted long enough to count. Disarming and arming again can count as another flight, even without unplugging the battery. KSE displays that total separately from KSE Counter and updates it after confirmed disarm; it does not change or reset it. Timer 1 and a count file are not required for FC counting.
 
@@ -189,7 +224,7 @@ Select **Heli Type → Auto Elec/Nitro** to choose Electric or Nitro from the co
 | `RAW 700N`, `RAW Nitro`, `RAWNitro` | Nitro |
 | `RAW 700`, `RAW Electric`, `Nitro 700E` | Electric |
 
-**Naming trap:** `Goblin` ends in `n`, so it selects Nitro. Use `Goblin 700` for an electric aircraft. For OMP models, choose OMPHOBBY or OMP Auto; Auto Elec/Nitro selects only Electric/Nitro.
+**Naming trap:** `Goblin` ends in `n`, so it selects Nitro. Use `Goblin 700` for an electric aircraft. For OMP models, choose OMPHOBBY; Auto Elec/Nitro selects only Electric/Nitro.
 
 Auto Elec/Nitro needs a connection to read the helicopter’s name. While it is waiting, battery warnings, battery-profile selection and counting may be unavailable. You do not need to enable RF Tool’s **Set name on TX** option.
 
@@ -197,19 +232,19 @@ In Auto Elec/Nitro, the helicopter’s FC name is used for the dashboard title, 
 
 ### One radio model for OMP M1 and M2
 
-Select **Heli Type → OMP Auto** to use one EdgeTX model with a 2S OMP M1 and a 3S OMP M2. The radio model can have any name, such as **OMP Helis**. Its controls and receiver setup must work with both helicopters; OMP provides a [shared EdgeTX model](https://www.omphobby.com/Radio-Files-n2057525.html).
+Select **Helicopter type → OMPHOBBY** to use one EdgeTX model with a 2S OMP M1 and a 3S OMP M2. The radio model can have any name, such as **OMP Helis**. Its controls and receiver setup must work with both helicopters; OMP provides a [shared EdgeTX model](https://www.omphobby.com/Radio-Files-n2057525.html).
 
 Discover the [OMP sensors](#omphobby-telemetry), including **`Volt`**. Connect one helicopter at a time. Wait for **OMP M1** or **OMP M2** to appear before flying. KSE selects the battery cell count, matching picture and separate flight count. The selected aircraft stays fixed until the helicopter disconnects. RPM and ARM readings are not needed for identification.
 
 Use `/IMAGES/OMP M1.png` and `/IMAGES/OMP M2.png` for the pictures; BMP also works. Follow the usual [image size limits](#model-images).
 
-This distinguishes M1 from M2, but cannot tell two M1s or two M2s apart. Counts previously saved under other names remain in the history file; they are not moved automatically. If your helicopter does not provide `Volt`, keep using manual **OMPHOBBY** mode.
+This distinguishes M1 from M2, but cannot tell two M1s or two M2s apart. Counts previously saved under other names remain in the history file; they are not moved automatically. Both `RxBt` and `Volt` are required; model-name-based manual OMP selection is no longer available.
 
 ## Customization and telemetry reference
 
 ### Model images
 
-Place a PNG or BMP in `/IMAGES/` named for the EdgeTX model, the confirmed FC name in Auto Elec/Nitro, or **OMP M1** / **OMP M2** in OMP Auto. For example:
+Place a PNG or BMP in `/IMAGES/` named for the EdgeTX model, the confirmed FC name in Auto Elec/Nitro, or **OMP M1** / **OMP M2** in OMPHOBBY. For example:
 
 ```text
 Model name: Goblin RAW
@@ -260,10 +295,10 @@ The setup also enables RF Tool’s spoken adjustment announcements and `Mode`, `
 | `Capa` | Consumed capacity in mAh. |
 | `Curr` | Current in amps. |
 | `RxBt` | Flight-pack voltage. |
-| `Volt` (OMP Auto only) | Average cell voltage; needed for automatic M1/M2 selection. |
+| `Volt` | Average cell voltage; needed for automatic M1/M2 selection. |
 | `Temp` (optional) | Temperature. |
 
-The first five names are required. In manual **OMPHOBBY** mode, include **M1** or **M2** in the radio’s model name: M1 is 2S LiHV (8.7 V full); M2 is 3S. **OMP Auto** identifies the helicopter from `RxBt` and `Volt`. Keep those two discovered sensors with their original names, units and scaling; do not replace them with calculated sensors or duplicate their names. These OMP voltage names apply to **CRSF/ExpressLRS**. The Rotorflight sensor list above does not apply to OMP.
+The first six sensors are required; `Temp` is optional. **OMPHOBBY** identifies the helicopter from `RxBt` and `Volt`: M1 is 2S LiHV (8.7 V full); M2 is 3S. The radio model name does not select the aircraft. Keep those two discovered sensors with their original names, units and scaling; do not replace them with calculated sensors or duplicate their names. These OMP voltage names apply to **CRSF/ExpressLRS**. The Rotorflight sensor list above does not apply to OMP.
 
 ## Troubleshooting and common questions
 
@@ -281,7 +316,7 @@ The first five names are required. In manual **OMPHOBBY** mode, include **M1** o
 | Battery profiles do not open | Use Electric mode, connect and disarm the helicopter, and check that `ARM` is updating. Set a capacity above zero for each battery profile in Rotorflight. |
 | `UPDATE EDGETX FOR PROFILE PICKER` | Update EdgeTX to a version supported by your radio and the installed RF Tool package. |
 | The dashboard clock does not run | Configure **EdgeTX Timer 1** to run from your motor switch, even if you use Rotorflight FC counting. |
-| No Nitro fuel reminder | Check that KSE shows Nitro, a duration is selected in **Fuel Check Timer - Nitro** rather than **Off**, and Timer 1 is running. Reselect the duration after updating from the older text setting. Reset Timer 1 before the flight; starting KSE after the selected time does not replay the reminder. Copy the complete dashboard folder for the spoken clip; if it is missing, KSE uses two beeps. Check the radio's sound/haptic settings, and close standalone Lua tools during flight. |
+| No Nitro fuel reminder | Check that KSE shows Nitro, a duration is selected in **Fuel Check Reminder** (Nitro) rather than **Off**, and Timer 1 is running. Reset Timer 1 before the flight; starting KSE after the selected time does not replay the reminder. Copy the complete dashboard folder for the spoken clip; if it is missing, KSE uses two beeps. Check the radio's sound/haptic settings, and close standalone Lua tools during flight. |
 | FC count is unavailable | Connect and disarm the helicopter. Check that `ARM` is updating, model statistics are enabled, and Rotorflight 2.3 plus its Lua package are installed. |
 | KSE count does not advance | Set Timer 1 to run with the motor switch. Let it run for the chosen minimum time and reset it between flights. OMP always uses this counter. |
 | Battery percentage is missing or looks wrong | For Electric Rotorflight models, first check the battery readings and settings on Configurator’s **Power** tab; see [battery and SmartFuel setup](https://rotorflight.org/docs/configurator/tabs/power). If those look correct, check the radio’s sensors and KSE’s **Battery Reserve %**, which changes the displayed percentage. For OMP, check the [OMP sensor list and model name](#omphobby-telemetry). |
@@ -292,10 +327,10 @@ The first five names are required. In manual **OMPHOBBY** mode, include **M1** o
 | Model image is missing | Check the filename, capitalization, dimensions and file size against [Model images](#model-images). Auto Elec/Nitro uses the confirmed FC name. |
 | Arming-blocker banner disappears in flight | This is normal. The banner is useful before arming and returns after confirmed disarm if a blocker remains. |
 | Auto Elec/Nitro stays waiting or chooses the wrong type | Check the connection, FC name and [Auto Elec/Nitro naming rules](#auto-helicopter-type); choose Electric/Nitro manually if needed. |
-| OMP Auto shows `CONNECT OMP` | Connect one helicopter and wait for live telemetry. |
-| OMP Auto still shows the previous helicopter | Disconnect and wait for `CONNECT OMP` before connecting the other helicopter. Check the name again before flying. |
-| OMP Auto shows `CHECK RxBt/Volt` | Check that `RxBt` shows pack voltage and `Volt` shows average cell voltage, both updating. Keep their original settings and remove duplicate names or calculated replacements. See [OMP telemetry](#omphobby-telemetry); use manual OMPHOBBY mode if `Volt` is unavailable. |
-| OMP Auto shows `CHECK SENSORS` | Keep only one sensor with each name `RxBt` and `Volt`. Use the original discovered sensors, not calculated replacements. |
+| OMPHOBBY shows `CONNECT OMP` | Connect one helicopter and wait for live telemetry. |
+| OMPHOBBY still shows the previous helicopter | Disconnect and wait for `CONNECT OMP` before connecting the other helicopter. Check the name again before flying. |
+| OMPHOBBY shows `CHECK RxBt/Volt` | Check that `RxBt` shows pack voltage and `Volt` shows average cell voltage, both updating. Keep their original settings and remove duplicate names or calculated replacements. See [OMP telemetry](#omphobby-telemetry). `Volt` is required for identification. |
+| OMPHOBBY shows `CHECK SENSORS` | Keep only one sensor with each name `RxBt` and `Volt`. Use the original discovered sensors, not calculated replacements. |
 
 ### Count-history recovery
 

@@ -8,11 +8,12 @@ Use the [user guide](../README.md) for installation and operation, [project rule
 | --- | --- |
 | [Compatibility](compatibility.md) | RF admission, ARM timing, ownership, Auto type, Nitro reminder, footer status and preserved telemetry semantics. |
 | [RF integration](rf-integration.md) | Embedded/external RF Tool servicing, pending versus active work, staged profile operations and pinned transport limitations. |
+| [Fullscreen settings](settings-menu.md) | Native UI entry, configuration authority, model companions, storage recovery and version-pinned APIs. |
 | [Runtime resources](runtime-resources.md) | Compiler margins, callback budgets, shared/native memory accounting and measurement pitfalls. |
 | [Transmitter validation](transmitter-validation.md) | Outstanding hardware acceptance, independent review and result reporting. Desktop tests do not close these checks. |
 | [OMP Auto](omp-auto-identification-feasibility.md) | Cell-class identification, source qualification, lifecycle and official OMP/CRSF evidence. |
 | [Model-image limits](image-resource-limits.md) | Current file/dimension bounds and native decoding/cache costs. |
-| [Transmitter battery](edgetx-2.12.4-battery-icon-comparison.md) | Native range, rounding/color parity and saved-option compatibility. |
+| [Transmitter battery](edgetx-2.12.4-battery-icon-comparison.md) | Native range, rounding/color parity and unavailable-range handling. |
 | [Status icons](edgetx-2.12.4-status-icons.md) | Native signal bars and the firmware API limitation that keeps volume indication deferred. |
 | [Telemetry configuration](telemetry-configuration-audit.md) | Rationale and pinned evidence for the user guide's sensor selection, including older-version limitations. |
 | [Release packaging](release-packaging.md) | End-user archive contents, exclusions and packaging checks. |

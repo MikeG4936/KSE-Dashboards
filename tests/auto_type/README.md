@@ -1,5 +1,7 @@
 # Auto helicopter type contracts
 
+Configuration in these domain fixtures enters through the explicit test-only [saved-settings helper](../behavior/settings_fixture.lua). It seeds an in-memory per-model record using the production schema/defaults and calls the real `create(zone)` callback; transitions use the owner-guarded `G.updateSettings` engine boundary. The helper replaces only settings attachment and the native-editor API requirement so these radio/RF/renderer mocks need no fake editor support. It never repurposes native `create`/`update` option payloads. The [settings suite](../settings/README.md) covers the actual editor and persistence path.
+
 Build the supported EdgeTX fixture runner using [the compiler tooling](../../tools/edgetx/README.md), then run from the repository root:
 
 ```sh
@@ -10,14 +12,14 @@ The runner creates temporary copies of both generated dashboards with a test-onl
 
 Each dashboard runs at 800×480, 480×320, and 480×272. Contracts cover:
 
-- Persisted choice order/default, literal name suffixes, fractional option rejection, manual overrides, and OMP's retained counter preference.
+- Canonical four-choice menu order/default, literal name suffixes, fractional selection rejection, explicit Electric/Nitro overrides, and OMP's retained counter preference. OMP footer and fuel-suppression cases confirm a real identity from public RxBt/Volt metadata before their assertions.
 - Missing/blank/initializing FC names, exact 29/30-tick confirmation, candidate changes, clock rollback, unchanged TX names, theme edits, brief RSSI loss, and full reconnect.
 - Mode selection before telemetry, paused unresolved alerts/profiles/counts, stable warning latches, same-type session resets, hidden resolution, deferred layout rebuilds, real waiting-state rendering, and the normal 10 Hz telemetry cap without repeated stable-name inference.
 - Embedded publication during the callback, exactly one embedded background service per callback, untouched external hosts/queues, and pending owned request removal before pumping while preserving active requests and foreign entries.
 - Separate CSV keys and image lookup for confirmed FC names, retained disconnected identity, local count persistence after identity becomes unresolved, and identified Nitro FC-count admission.
 - Duplicate widgets, cross-variant foreground takeover, and fresh confirmation after TX filename, provider, queue, or host replacement. Immediate callback eligibility is checked before a subsequent KSE callback.
 - Flight-count footer parity for Electric, Nitro and Auto with both counter choices: current ARM agreement with bounded recent-update evidence, bit-zero semantics, missing/stale/invalid/contradictory inputs, initial connection, immediate link loss, provider replacement and sub-10-tick foreground/background transitions. Normal three-second ARM updates keep both armed and disarmed labels stable. OMP omits RF status; armed transitions retain UI objects and add no requests.
-- Nitro fuel reminder in manual/Auto modes and both counter choices: six elapsed minutes, idle/hold timer pause, count-up/countdown resets, hidden and visible callbacks, no additional armed MSP, queued haptic priority, reconnect/theme/counter/type changes, late widget startup/takeover, Electric/OMP suppression, unresolved Auto recovery, simulation, failed timer reads and missing-clip fallback. The native CHOICE descriptor covers all 121 index-to-duration mappings, Off, the 06:00 default, 00:15/01:00/06:15/06:30/29:45/30:00 boundaries, seconds-only countdown/reset, invalid/fractional/nonfinite indices and legacy text, the text-to-choice migration, no overdue announcement after setting changes, original-slot preservation, and version-gated descriptors for 2.11/2.12/future versions.
+- Nitro fuel reminder in manual/Auto modes and both counter choices: six elapsed minutes, idle/hold timer pause, count-up/countdown resets, hidden and visible callbacks, no additional armed MSP, queued haptic priority, reconnect/theme/counter/type changes, late widget startup/takeover, Electric/OMP suppression, unresolved Auto recovery, simulation, failed timer reads and missing-clip fallback. The internal menu steps cover all 121 index-to-duration mappings, Off, the 06:00 default, 00:15/01:00/06:15/06:30/29:45/30:00 boundaries, seconds-only countdown/reset, invalid/fractional/nonfinite values, and no overdue announcement after settings changes. There are no native descriptor or legacy migration contracts.
 
 Use the [MSP admission contracts](../msp_admission/README.md) for pinned upstream decoders, continuation stages, and stale callback delivery. Storage recovery and ownership suites cover their broader fault matrices.
 

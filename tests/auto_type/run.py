@@ -15,11 +15,12 @@ def instrument(source):
     marker = source.rfind('\nreturn {')
     if marker < 0 or 'useLvgl' not in source[marker:]:
         raise ValueError('Expected final widget descriptor')
-    exports = ('AUTO_HELI=AUTO_HELI,OPT=OPT,A=A,D=D,S=S,FC=FC,'
+    exports = ('AUTO_HELI=AUTO_HELI,OMP_AUTO=OMP_AUTO,OPT=OPT,A=A,D=D,S=S,FC=FC,'
                'owner=WidgetOwner,profiles=batteryProfiles,'
                'name=getModelName,cache=getFlightCache,count=getFlightCount,'
                'clear=clearFrameCache,image=resolveModelImagePath')
-    return source[:marker] + source[marker:].replace('return {', 'return {\n audit={' + exports + '},', 1)
+    return (source[:marker] + '\n' + ROOT.joinpath('tests/behavior/settings_fixture.lua').read_text()
+            + source[marker:].replace('return {', 'return {\n fixture=FixtureSettings, audit={' + exports + '},', 1))
 
 
 def main():
@@ -41,6 +42,7 @@ def main():
             for width, height in ((800, 480), (480, 320), (480, 272)):
                 fixture = temp / 'fixture.lua'
                 fixture.write_text((ROOT / 'tests/behavior/mock.lua').read_text() + '\n'
+                    + (ROOT / 'tests/behavior/omp_sources.lua').read_text() + '\n'
                     + (ROOT / 'tests/storage/mock.lua').read_text() + '\n'
                     + f'LCD_W={width};LCD_H={height}\n'
                     + 'dashboardPath=' + json.dumps(str(temp / (variant + '.lua'))) + '\n'

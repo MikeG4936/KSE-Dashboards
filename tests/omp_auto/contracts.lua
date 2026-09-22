@@ -63,11 +63,10 @@ local function fixture(selection)
   rf2={apiVersion=12.09,rfToolApiVersion=1,modelName="RF name must not identify OMP",
     widget=t.host,mspQueue=t.queue,registerWidget=function() end}
   loadScript=function() t.loads=t.loads+1;error("OMP Auto must not load RF Tool") end
-  t.api=dofile(dashboardPath);t.audit=t.api.audit;t.opts={}
-  for _,option in ipairs(t.api.options) do t.opts[option[1]]=option[3] end
+  t.api=dofile(dashboardPath);t.audit=t.api.audit;t.opts=t.api.fixture.defaults()
   t.opts.HeliType=selection or 5;t.opts.CountSrc=2;t.opts.MotorSw=99
-  t.widget=t.api.create({x=0,y=0,w=LCD_W,h=LCD_H},t.opts)
-  t.api.update(t.widget,t.opts)
+  t.widget=t.api.fixture.create({x=0,y=0,w=LCD_W,h=LCD_H},t.opts)
+  t.api.fixture.apply(t.widget,t.opts)
   function t:step(visible,delta)
     __mock.now=__mock.now+(delta or 20)
     if visible then self.api.refresh(self.widget,nil,nil) else self.api.background(self.widget) end
@@ -184,16 +183,16 @@ eq(locked.audit.A.flightDeadVoiceLatched,false,"new class resets old warning lat
 
 local t=fixture()
 local a=t.audit
-eq(#t.api.options,11,"original ten options plus fuel setting")
-eq(table.concat(t.api.options[4][4],","),"Electric,Nitro,OMPHOBBY,Auto Elec/Nitro,OMP Auto","appended choice order")
-eq(t.api.options[4][3],1,"Electric default retained")
+eq(#t.api.options,0,"native descriptor has no configuration")
+eq(table.concat(t.api.fixture.heliTypes,","),"Electric,Nitro,Auto Elec/Nitro,OMPHOBBY","menu choice order")
+eq(t.api.fixture.defaults().HeliType,1,"Electric default retained")
 eq(a.OPT.ompAuto,true,"OMP Auto enabled")
 eq(a.OPT.autoHeliType,false,"FC name Auto independent")
 eq(a.OPT.heliType,3,"OMP effective engine")
 eq(a.OPT.flightCounter,1,"effective local counter")
 eq(t.opts.CountSrc,2,"saved FC preference preserved")
-eq(t.opts.HeliType,5,"saved OMP Auto choice preserved")
-eq(a.name(),"OMP AUTO","initial unresolved display name")
+eq(t.opts.HeliType,5,"saved OMPHOBBY choice preserved")
+eq(a.name(),"OMPHOBBY","initial unresolved display name")
 eq(a.count(),nil,"unresolved counter has no guessed identity")
 __mock.timer.value=25;t:step(true)
 eq(a.OMP_AUTO.ready,false,"first ratio begins confirmation")
@@ -203,17 +202,35 @@ eq(a.name(),"OMP M1","2S selects exact M1 display name")
 eq(a.D.cellsResolved,2,"M1 cells")
 eq(a.D.isLiHV,true,"M1 chemistry deterministic")
 eq(a.cache()["Arbitrary radio model"],nil,"generic radio key never counted")
-eq(a.cache()["OMP AUTO"],nil,"unresolved key never counted")
+eq(a.cache()["OMPHOBBY"],nil,"unresolved key never counted")
 eq(a.count(),0,"already-running timer cannot count at initial resolution")
 local builds=t.builds
 a.A.flightDeadVoiceLatched=true;t:settle(true)
 eq(a.A.flightDeadVoiceLatched,true,"stable identity preserves latch")
 eq(t.builds,builds,"stable identity avoids rebuild")
-t.opts.Theme=2;t.api.update(t.widget,t.opts)
+t.opts.Theme=2;t.api.fixture.apply(t.widget,t.opts)
 eq(a.OMP_AUTO.ready,true,"theme edit preserves ready identity")
 eq(a.name(),"OMP M1","theme edit preserves name")
 eq(a.A.flightDeadVoiceLatched,true,"theme edit preserves warning latch")
 t:noRF("OMP Auto lifecycle")
+
+-- Both existing saved OMP IDs resolve to the single automatic menu mode.
+-- A convincing radio name still cannot bypass unavailable sensor evidence.
+for _,selection in ipairs({3,5}) do
+  local compatible=fixture(selection)
+  __mock.modelName="OMP M2"
+  compatible:remove(7);compatible:settle(true)
+  eq(compatible.widget.options.HeliType,5,"saved OMP ID canonicalized "..selection)
+  eq(compatible.audit.OPT.ompAuto,true,"all OMP settings enable identification "..selection)
+  eq(compatible.audit.OMP_AUTO.ready,false,"radio name cannot bypass missing Volt "..selection)
+  eq(compatible.audit.name(),"OMPHOBBY","unresolved OMP has no guessed radio identity "..selection)
+  eq(compatible.audit.D.cellsResolved,0,"unresolved OMP has no guessed cells "..selection)
+  eq(compatible.audit.count(),nil,"unresolved OMP cannot use a radio-name counter "..selection)
+  compatible.cell=compatible:sensor(7,"Volt",3.8,0x80FE)
+  compatible:settle(false)
+  eq(compatible.audit.name(),"OMP M1","valid voltage overrides misleading radio name "..selection)
+  compatible:noRF("saved OMP ID "..selection)
+end
 
 -- Partial charge cannot turn a 3S aircraft into the 2S model.
 local partial=fixture();partial:pack(3,3.4);partial:settle(true)
@@ -428,7 +445,7 @@ eq(modelSwap.audit.owner.current(oldModelWidget),false,"previous saved model wid
 eq(oldModelWidget.kseInitialized,false,"previous saved model background retires the old session")
 eq(modelSwap.audit.A.flightDeadVoiceLatched,true,"previous saved model background cannot reset new session")
 -- Saved-model selection recreates the widget; the dashboard Lua state survives.
-modelSwap.widget=modelSwap.api.create({x=0,y=0,w=LCD_W,h=LCD_H},modelSwap.opts)
+modelSwap.widget=modelSwap.api.fixture.create({x=0,y=0,w=LCD_W,h=LCD_H},modelSwap.opts)
 modelSwap:step(true,1)
 eq(modelSwap.audit.owner.current(modelSwap.widget),true,"new saved model foreground owns immediately")
 eq(modelSwap.audit.OMP_AUTO.ready,false,"saved model change restarts identity")
@@ -436,17 +453,23 @@ eq(modelSwap.audit.count(),nil,"saved model change suppresses counter")
 modelSwap:settle(false)
 eq(modelSwap.audit.name(),"OMP M1","replacement model confirms afresh")
 eq(modelSwap.audit.A.flightDeadVoiceLatched,false,"saved model clears prior alert session")
-modelSwap.opts.HeliType=3;__mock.modelName="Manual M2";modelSwap.api.update(modelSwap.widget,modelSwap.opts)
+modelSwap.audit.A.flightDeadVoiceLatched=true
+modelSwap.opts.HeliType=3;__mock.modelName="Misleading M2";modelSwap.api.fixture.apply(modelSwap.widget,modelSwap.opts)
 modelSwap:settle(true)
-eq(modelSwap.audit.OPT.ompAuto,false,"manual OMP disables detection")
-eq(modelSwap.audit.name(),"Manual M2","manual OMP uses radio name")
-eq(modelSwap.audit.D.cellsResolved,3,"manual M2 fallback preserved")
-modelSwap.opts.HeliType=5;modelSwap.api.update(modelSwap.widget,modelSwap.opts)
-eq(modelSwap.audit.OMP_AUTO.ready,false,"manual to Auto requires confirmation")
-eq(modelSwap.audit.count(),nil,"manual to Auto suppresses inherited counter")
-modelSwap:settle(true);eq(modelSwap.audit.name(),"OMP M1","manual to Auto uses ratio")
+eq(modelSwap.widget.options.HeliType,5,"prior saved OMP ID normalizes to automatic OMPHOBBY")
+eq(modelSwap.audit.OPT.ompAuto,true,"prior OMP ID cannot disable detection")
+eq(modelSwap.audit.name(),"OMP M1","radio name cannot override confirmed voltage identity")
+eq(modelSwap.audit.D.cellsResolved,2,"normalized mode preserves confirmed cells")
+eq(modelSwap.audit.A.flightDeadVoiceLatched,true,"equivalent OMP ID preserves alert session")
+modelSwap.opts.HeliType=5;modelSwap.api.fixture.apply(modelSwap.widget,modelSwap.opts)
+eq(modelSwap.audit.OMP_AUTO.ready,true,"equivalent saved OMP IDs preserve confirmation")
+modelSwap.opts.HeliType=1;modelSwap.api.fixture.apply(modelSwap.widget,modelSwap.opts)
+modelSwap.opts.HeliType=5;modelSwap.api.fixture.apply(modelSwap.widget,modelSwap.opts)
+eq(modelSwap.audit.OMP_AUTO.ready,false,"Electric to OMP requires fresh confirmation")
+eq(modelSwap.audit.count(),nil,"Electric to OMP suppresses inherited counter")
+modelSwap:settle(true);eq(modelSwap.audit.name(),"OMP M1","Electric to OMP uses voltage ratio")
 for _,invalid in ipairs({0,6,-1,1.5,3.5,4.5,5.5}) do
-  modelSwap.opts.HeliType=invalid;modelSwap.api.update(modelSwap.widget,modelSwap.opts)
+  modelSwap.opts.HeliType=invalid;modelSwap.api.fixture.apply(modelSwap.widget,modelSwap.opts)
   eq(modelSwap.audit.OPT.heliType,1,"invalid choice falls back to Electric")
   eq(modelSwap.audit.OPT.ompAuto,false,"invalid choice cannot enable OMP Auto")
 end

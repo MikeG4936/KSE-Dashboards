@@ -54,11 +54,14 @@ def main():
             background = 'C_BG' if variant == 'KSE4' else 'C_TOP'
             dashboard = Path(temp) / f'{variant}.lua'
             dashboard.write_text(source[:marker]
+                + '\n' + ROOT.joinpath('tests/behavior/settings_fixture.lua').read_text()
                 + f'\n__txTestUi=function(w) return {ui}, G, C_TEXT, {inactive}, {background} end\n'
-                + source[marker:])
+                + '\n__ompTest=function() return OMP_AUTO.ready, getModelName(), D.cellsResolved end\n'
+                + source[marker:].replace("return {", "return {fixture=FixtureSettings,", 1))
             for width, height in ((800,480),(480,320),(480,272)):
                 path = Path(temp) / 'run.lua'
                 path.write_text((ROOT/'tests/behavior/mock.lua').read_text() + '\n'
+                    + (ROOT/'tests/behavior/omp_sources.lua').read_text() + '\n'
                     + f'LCD_W={width};LCD_H={height}\n'
                     + 'dashboardPath=' + json.dumps(str(dashboard)) + '\n'
                     + HERE.joinpath('contracts.lua').read_text())

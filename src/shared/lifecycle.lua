@@ -1,16 +1,32 @@
 local function refreshOwned(widget, event, touchState)
+  if SettingsMenu.requirement(widget) then return end
   clearFrameCache()
   batteryProfiles.prepare(widget)
   OMP_AUTO.sync(widget)
-  ensureLayout(widget, event ~= nil)
+  local editing, saved = SettingsMenu.service(widget, event, touchState)
+  if saved then
+    if not SettingsStore.equal(saved, widget.options) then G.updateSettings(widget, saved) end
+    -- Finish the save/apply callback before allocating the dashboard again.
+    editing = true
+  end
+  local rebuilt = not editing and ensureLayout(widget, event ~= nil)
   local count, status, connected = FC.count, FC.status, widget.profileConnectedForDisplay
   local serviced = serviceTelemetry(true)
-  batteryProfiles.service(widget, true, event, touchState)
-  if serviced or widget.kseUiDirty or count ~= FC.count or status ~= FC.status
-     or connected ~= widget.profileConnectedForDisplay then updateUiState(widget) end
-  widget.kseUiDirty = nil
+  local allowUi = not editing and widget.kseSettingsGesture == nil
+  batteryProfiles.service(widget, allowUi, allowUi and event or nil, allowUi and touchState or nil)
+  if not editing and not rebuilt then
+    if serviced or widget.kseUiDirty or count ~= FC.count or status ~= FC.status
+       or connected ~= widget.profileConnectedForDisplay then updateUiState(widget) end
+    widget.kseUiDirty = nil
+  else
+    -- Rebuilding retained controls and updating every instrument in the same
+    -- callback can exceed EdgeTX's instruction budget. Fill the new controls
+    -- on the following refresh; telemetry and RF work still run on both.
+    widget.kseUiDirty = true
+  end
 end
 local function backgroundOwned(widget)
+  SettingsMenu.background(widget)
   clearFrameCache()
   batteryProfiles.prepare(widget)
   OMP_AUTO.sync(widget)
@@ -43,7 +59,7 @@ local function createOwned(zone, options)
   batteryProfiles.flightSourceChanged(widget)
   return widget
 end
-local function updateOwned(widget, options)
+function G.updateSettings(widget, options)
   widget.options = options
   local previousHeliType = OPT.heliType
   local previousAutoHeliType = OPT.autoHeliType
@@ -124,37 +140,37 @@ local function updateOwned(widget, options)
   end
   A.lastDataTick = -1
   clearFrameCache()
-  G.prepareWidget(widget)
-  buildUi(widget)
+  widget.layoutSignature = nil
+  widget.kseUiDirty = true
 end
 function G.initializeOwner(widget)
   flightStore = WidgetOwner.sharedStore(flightStore)
   flightCache = flightStore.cache
   for key in pairs(widget) do
-    if key ~= "zone" and key ~= "options" and key ~= "kseOwnerEpoch"
+    if key ~= "zone" and key ~= "kseOwnerEpoch"
        and key ~= "kseModelFile" and key ~= "kseModelEpoch"
        and key ~= "profileOperationToken" and key ~= "armingStatusToken" then widget[key] = nil end
   end
-  local created = createOwned(widget.zone, widget.options)
+  local effective = SettingsMenu.attach(widget)
+  local created = createOwned(widget.zone, effective)
   for key, value in pairs(created) do widget[key] = value end
   widget.kseInitialized, widget.kseBlockedDrawn = true, nil
   widget.layoutSignature = nil
   widget.kseRevoke = function()
+    SettingsMenu.retire(widget)
     batteryProfiles.retire(widget)
     widget.kseInitialized = false
   end
 end
-local function create(zone, options)
-  local widget = {zone=zone, options=options or {}}
+local function create(zone)
+  local widget = {zone=zone}
   widget.kseModelFile, widget.kseModelEpoch = WidgetOwner.context()
   if WidgetOwner.claim(widget, false) then G.initializeOwner(widget) end
   return widget
 end
-local function update(widget, options)
-  if not widget then return end
-  widget.options = options or {}
-  if not WidgetOwner.claim(widget, false) then return end
-  updateOwned(widget, options)
+local function update(widget)
+  if not widget or not WidgetOwner.claim(widget, false) then return end
+  if not widget.kseInitialized then G.initializeOwner(widget) end
 end
 local function refresh(widget, event, touchState)
   if not widget then return end
