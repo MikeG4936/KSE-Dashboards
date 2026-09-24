@@ -19,6 +19,10 @@ Use the [user guide](../README.md) for installation and operation, [project rule
 
 Source-based research is versioned evidence. Recheck affected code and upstream versions before treating it as support for a new release. Keep copyable installation commands in the user guide and test commands beside their suites.
 
+## Proposed work
+
+The [setup and diagnostics panel plan](setup-diagnostics-panel-plan.md) describes proposed behavior, implementation slices and validation gates. Its [EdgeTX feasibility research](setup-diagnostics-edgetx-research.md) records version-pinned API evidence. These documents are planning material, not implemented dashboard features or completed transmitter validation.
+
 ## Repository layout
 
 | Path | Purpose |
