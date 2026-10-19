@@ -32,7 +32,7 @@ end
 updateUiState=function() __ownershipMetrics.draw=__ownershipMetrics.draw+1 end
 batteryProfiles.service=function() __ownershipMetrics.rf=__ownershipMetrics.rf+1 end
 """
-    exports = ("return { audit={OPT=OPT,A=A,D=D,S=S,G=G,store=flightStore,"
+    exports = ("return { audit={OPT=OPT,A=A,D=D,S=S,G=G,store=function() return flightStore end,"
                "count=getFlightCount,profiles=batteryProfiles,owner=WidgetOwner,"
                "metrics=__ownershipMetrics},")
     return source[:marker] + hooks + source[marker:].replace("return {", exports, 1)

@@ -14,6 +14,8 @@ Profile startup, normal flight, reconnect, dropped replies, profile dialogs, ful
 
 The [complete callback CPU regressions](../tests/cpu_budget/README.md) exercise Auto type transitions, saved-model takeover, counter changes and fallback recovery in both generated dashboards. Measure each callback separately, including constructor-time and post-callback retained properties. The exact-source instruction filter excludes Lua mocks and establishes a dashboard-only margin; real RF Tool execution, native I/O/render time and allocation remain hardware checks. Do not interpret its 15,000-instruction gate as proof that the complete firmware callback meets that target.
 
+The [OMP callback suite](../tests/omp_cpu/README.md) adds native sensor-slot bounds and retained M1/M2 transitions. The [RF/picker suite](../tests/rf_cpu/README.md) counts dashboard and pinned RF Tool instructions together, including its official minimizer output, CRSF decoding, queue retries and full-history saves. Its save target remains below 15,000; the six-profile picker has a separately documented smaller margin below the 20,200-instruction modeled hard limit. Native I/O time, LVGL allocation, installed RF Tool differences and radio scheduling remain outside these host measurements.
+
 ## Upstream limits and pitfalls
 
 **Hard compiler limits in the pinned EdgeTX Lua implementation:**

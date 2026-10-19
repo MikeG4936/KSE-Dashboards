@@ -73,6 +73,13 @@ local function fixture(selection,counter,embedded)
     end
   end
   function t:settle(visible) for _=1,4 do self:step(visible) end end
+  function t:persist()
+    for _=1,100 do
+      if not self.audit.store.dirty then return end
+      self:step(false)
+    end
+    error("Auto did not finish pending history save")
+  end
   function t:hasText(text)
     for _,item in ipairs(self.labels) do
       local value=item.properties.text
@@ -335,7 +342,7 @@ __mock.timer.value=25;counts:step(false)
 eq(ca.cache()["Aircraft B"],1,"second same-type FC counted")
 eq(ca.cache()["Aircraft A"],1,"first FC count retained")
 eq(ca.cache()["Shared Heli"],nil,"TX key not written")
-counts:settle(false)
+counts:persist()
 assert(string.find(fs.files["/flights-count.csv"] or "","Aircraft A,1",1,true),"first identity persisted")
 assert(string.find(fs.files["/flights-count.csv"] or "","Aircraft B,1",1,true),"second identity persisted")
 
@@ -357,7 +364,7 @@ __mock.timer.value=25;dirty:step(false)
 eq(dirty.audit.cache()["Dirty Electric"],1,"count retained after storage failure")
 dirty:disconnect();dirty:step(false)
 eq(dirty.audit.AUTO_HELI.ready,false,"dirty save test is unresolved")
-fs.online=true;dirty:step(false,501)
+fs.online=true;dirty:step(false,501);dirty:persist()
 assert(string.find(fs.files["/flights-count.csv"] or "","Dirty Electric,1",1,true),"unresolved Auto must finish dirty save")
 
 -- FC count admissions await identity; Nitro diagnostics still work normally.

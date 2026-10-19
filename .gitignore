@@ -103,6 +103,16 @@
 !/tests/omp_auto/*.py
 !/tests/omp_auto/*.lua
 !/tests/omp_auto/README.md
+!/tests/omp_cpu/
+/tests/omp_cpu/*
+!/tests/omp_cpu/*.py
+!/tests/omp_cpu/*.lua
+!/tests/omp_cpu/README.md
+!/tests/rf_cpu/
+/tests/rf_cpu/*
+!/tests/rf_cpu/*.py
+!/tests/rf_cpu/*.lua
+!/tests/rf_cpu/README.md
 !/tests/ownership/
 /tests/ownership/*
 !/tests/ownership/*.py

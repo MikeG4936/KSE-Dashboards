@@ -16,7 +16,7 @@ def instrument(source):
     if marker < 0 or 'useLvgl' not in source[marker:]:
         raise ValueError('Expected final widget descriptor')
     exports = ('AUTO_HELI=AUTO_HELI,OPT=OPT,A=A,D=D,S=S,FC=FC,'
-               'owner=WidgetOwner,profiles=batteryProfiles,'
+               'owner=WidgetOwner,profiles=batteryProfiles,store=flightStore,'
                'name=getModelName,cache=getFlightCache,count=getFlightCount,'
                'clear=clearFrameCache,image=resolveModelImagePath')
     return source[:marker] + source[marker:].replace('return {', 'return {\n audit={' + exports + '},', 1)

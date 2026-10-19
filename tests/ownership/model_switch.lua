@@ -40,6 +40,14 @@ local function tick(api,widget,now,seconds,foreground)
   __mock.now=now; __mock.timer={start=0,value=seconds or 0}
   if foreground then api.refresh(widget,nil,nil) else api.background(widget) end
 end
+-- Advance separate production callbacks; persistence is intentionally staged.
+local function persist(api,widget)
+  for _=1,100 do
+    if not api.audit.store().dirty then return end
+    api.background(widget)
+  end
+  error("owner did not finish pending history save")
+end
 local function metrics(api)
   local m=api.audit.metrics
   return m.rf+m.build+m.draw
@@ -105,6 +113,7 @@ eq("B first foreground takes ownership immediately",lease.widget==fresh,true)
 eq("B immediate foreground initializes",fresh.kseInitialized,true)
 eq("B foreground applies saved options",b.OPT.reservePct,35)
 eq("B foreground reads independent saved count",b.count(),20)
+persist(second,fresh)
 eq("model switch saves dirty A history",fs.files[path],header.."Fixture,8\nOther,20\n")
 eq("model switch retires old A operation",old.profileOperation,nil)
 eq("model switch preserves foreign queue entry",#rf2.mspQueue.messageQueue,1)

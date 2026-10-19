@@ -16,7 +16,8 @@ def main():
     args = parser.parse_args()
     source = (HERE.joinpath("mock.lua").read_text() + "\n"
               + "Storage=(function()\n" + args.implementation.read_text()
-              + "\nend)()\n" + HERE.joinpath("contracts.lua").read_text())
+              + "\nend)()\n" + HERE.joinpath("contracts.lua").read_text()
+              + "\n" + HERE.joinpath("save_contracts.lua").read_text())
     with tempfile.TemporaryDirectory(prefix="kse-storage-") as tmp:
         fixture = Path(tmp) / "storage.lua"
         fixture.write_text(source)
@@ -27,7 +28,8 @@ def main():
     lines = [line for line in result.stdout.splitlines() if line.startswith("PASS|")]
     if "PASS|complete" not in lines:
         raise SystemExit("Storage fixture completion missing: " + result.stdout)
-    print(f"PASS storage: {len(lines) - 1} assertions ({args.implementation})")
+    assertions = sum(line != "PASS|complete" for line in lines)
+    print(f"PASS storage: {assertions} assertions ({args.implementation})")
 
 
 if __name__ == "__main__":

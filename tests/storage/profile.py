@@ -43,7 +43,11 @@ for _,full in ipairs({false,true}) do
  Storage.markDirty(state,0)
  -- Force ordinary replacement, not the idempotent no-op path, without growth.
  state.cache["Model 200"]=199
- local saveCost=measure(function()Storage.service(state,0)end)
+ local saveCost,steps=0,0
+ while state.dirty do
+  steps=steps+1;assert(steps<100,"save did not finish")
+  saveCost=math.max(saveCost,(measure(Storage.service,state,0)))
+ end
  assert(not state.dirty,state.error)
  print("PROFILE|"..#data.." bytes|load="..loadCost.."|save="..saveCost)
  assert(loadCost<15000 and saveCost<15000,"isolated storage path exceeds project instruction margin")
@@ -70,7 +74,11 @@ local init,w=measure(t.create,{x=0,y=0,w=800,h=480},opts)
 m.now=0;m.timer={start=0,value=0};while t.state.loading do t.background(w) end;t.background(w)
 m.now=10;m.timer={start=0,value=30};t.background(w)
 m.now=20
-local save=measure(t.background,w)
+local save,steps=0,0
+while t.state.dirty do
+ steps=steps+1;assert(steps<100,"callback save did not finish")
+ save=math.max(save,(measure(t.background,w)))
+end
 assert(not t.state.dirty,t.state.error)
 print("PROFILE|callbacks|create="..init.."|background-save="..save)
 assert(init<15000 and save<15000,"mocked local-counter callback exceeds instruction margin")

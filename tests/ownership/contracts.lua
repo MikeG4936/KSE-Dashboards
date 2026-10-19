@@ -24,6 +24,14 @@ local function options(reserve,heli)
   return {Theme=1,TxBatt=1,HeliType=heli or 1,BattRsv=reserve,CountSrc=1,MinFlight=30,
           RxPackMin="6.60",RxPackMax="8.40",MotorSw=99}
 end
+-- Advance separate production callbacks; persistence is intentionally staged.
+local function persist(api,widget)
+  for _=1,100 do
+    if not api.audit.store().dirty then return end
+    api.background(widget)
+  end
+  error("owner did not finish pending history save")
+end
 local function metrics(api)
   return api.audit.metrics.rf+api.audit.metrics.build+api.audit.metrics.draw
 end
@@ -45,6 +53,7 @@ background(first,owner,1010,0)
 background(first,owner,1020,30)
 eq("owner qualifies local count",a.count(),8)
 background(first,owner,1030,30)
+persist(first,owner)
 eq("owner persists local count",fs.files[path],header.."Fixture,8\nOther,20\n")
 eq("owner background performs work",a.metrics.rf>0,true)
 
@@ -156,6 +165,7 @@ background(second,contender,2050,0)
 eq("current owner recognizes model change",b.count(),20)
 background(second,contender,2060,30); background(second,contender,2070,30)
 eq("current model qualifies independently",b.count(),21)
+persist(second,contender)
 eq("new owner preserves both models",fs.files[path],header.."Fixture,8\nOther,21\n")
 -- Transfer a count which qualified but has not reached the next save callback.
 background(second,contender,2080,0); background(second,contender,2090,30)
@@ -164,6 +174,7 @@ eq("qualified event waits for persistence callback",fs.files[path],header.."Fixt
 foreground(first,owner,2590,30)
 eq("returning foreground can claim expired owner",newLease.widget==owner,true)
 eq("handoff preserves dirty qualified count",a.count(),22)
+persist(first,owner)
 eq("handoff persists dirty history without recounting",fs.files[path],header.."Fixture,8\nOther,22\n")
 local reclaimedSelection=owner.profileSelectionRequested
 stalePicker(2)

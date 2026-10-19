@@ -150,7 +150,8 @@ function OMP_AUTO.sync(widget)
     resetSessionStats()
     resetSessionEvidence()
     timerThresholdArmed = nil
-    widget.layoutSignature = nil
+    -- M1/M2 share the same layout. display() refreshes retained properties
+    -- and the identity-dependent image without rebuilding every LVGL object.
   end
   OMP_AUTO.display(widget, true, nil)
 end

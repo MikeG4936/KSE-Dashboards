@@ -747,7 +747,7 @@ local Storage = (function()
 -- Shared KSE count storage; assembled into each standalone dashboard.
 -- EdgeTX v2.12.1: io.read hides errors as ""; fstat size is required.
 -- Global rename/del return FatFS FRESULT; only numeric zero means success.
-local Storage = { maxBytes=32768, maxEntries=200, batchLines=24,
+local Storage = { maxBytes=32768, maxEntries=200, batchLines=24, saveBatch=12,
                   retryTicks=500, maxAttempts=3 }
 
 function Storage.stat(path)
@@ -931,27 +931,45 @@ function Storage.increment(state, key, now)
   return false
 end
 
-function Storage.serialize(values)
-  local keys = {}
-  for key, value in pairs(values) do
-    if type(key) ~= "string" or key == "" or string.sub(key, 1, 1) == "#"
-       or string.find(key, "[,%c]")
-       or string.match(key,"^%s*(.-)%s*$") ~= key
-       or type(value) ~= "number" or math.tointeger(value) == nil
-       or value < 0 or value > 2147483647
-       or value > math.floor(value) then return nil, "INVALID COUNT" end
-    keys[#keys+1] = key
+-- Callbacks supply a job to yield after each batch. The no-job form is a
+-- bounded synchronous utility for fixture/CSV construction, never servicing.
+function Storage.serialize(values, job)
+  local batch = job and Storage.saveBatch or Storage.maxEntries + 1
+  local work = job or {}
+  if not work.keys then work.keys, work.parts = {}, {"model_name,flight_count\n# api_ver=1\n"} end
+  if not work.index then
+    for _ = 1, batch do
+      local key, value = next(values, work.key)
+      work.key = key
+      if key == nil then
+        table.sort(work.keys) -- Native sort, bounded to at most 200 names.
+        work.index = 1
+        break
+      end
+      if type(key) ~= "string" or key == "" or string.sub(key, 1, 1) == "#"
+         or string.find(key, "[,%c]")
+         or string.match(key,"^%s*(.-)%s*$") ~= key
+         or type(value) ~= "number" or math.tointeger(value) == nil
+         or value < 0 or value > 2147483647
+         or value > math.floor(value) then return nil, "INVALID COUNT" end
+      work.keys[#work.keys+1] = key
+      if #work.keys > Storage.maxEntries then return nil, "TOO MANY MODELS" end
+    end
+    if job then return nil end -- Never collect and format in one callback.
   end
-  if #keys > Storage.maxEntries then return nil, "TOO MANY MODELS" end
-  table.sort(keys)
-  local parts = {"model_name,flight_count\n# api_ver=1\n"}
-  local format = string.format
-  for _, key in ipairs(keys) do
-    parts[#parts+1] = format("%s,%d\n", key, values[key])
+  for _ = 1, batch do
+    local key = work.keys[work.index]
+    if key == nil then
+      local text = table.concat(work.parts)
+      if #text > Storage.maxBytes then return nil, "HISTORY TOO LARGE" end
+      return text
+    end
+    local row = string.format("%s,%d\n", key, values[key])
+    work.bytes = (work.bytes or #work.parts[1]) + #row
+    if work.bytes > Storage.maxBytes then return nil, "HISTORY TOO LARGE" end
+    work.parts[#work.parts+1] = row
+    work.index = work.index + 1
   end
-  local text = table.concat(parts)
-  if #text > Storage.maxBytes then return nil, "HISTORY TOO LARGE" end
-  return text
 end
 
 function Storage.rename(from, to)
@@ -976,47 +994,72 @@ function Storage.writeValidated(path, text)
   return readback == text
 end
 
+-- Exact comparison with the fully validated base guards every write attempt
+-- and is repeated immediately before promotion after yielding between phases.
+function Storage.checkBase(state, text)
+  local current, reason = Storage.read(state.path)
+  if current then
+    if current == text then return true, current, true end
+    if state.source == "new" or current ~= state.baseText then
+      return false, "HISTORY CHANGED"
+    end
+  elseif reason ~= "MISSING" then return false, reason end
+  if not current and state.source ~= "new" then
+    local backup = Storage.read(state.path .. ".bak")
+    if not backup or backup ~= state.baseText then return false, "BACKUP UNAVAILABLE" end
+  end
+  return true, current, false
+end
+
 function Storage.save(state)
   if not state.writable or not state.cache then return false, state.error or "READ ONLY" end
   if type(_G.rename) ~= "function" or type(_G.del) ~= "function" then
     return false, "FILESYSTEM API UNAVAILABLE"
   end
-  local text, reason = Storage.serialize(state.cache)
-  if not text then return false, reason end
-  -- The base text was fully parsed on load. Exact comparison avoids parsing
-  -- the same history again during a save, retaining the same write guard.
-  local current, mainReason = Storage.read(state.path)
-  if current then
-    if current == text then
-      -- A prior promotion may have succeeded before its confirmation failed.
-      state.baseText, state.source = text, "main"
-      return true
+  local job = state.saving
+  if not job then return false, "SAVE NOT STARTED" end
+  if job.phase == "serialize" then
+    if job.revision ~= state.revision then
+      -- A count changed while collecting/formatting: restart before using next
+      -- with a changed table, retaining this attempt's retry accounting.
+      job = {revision=state.revision, phase="serialize", active=true}
+      state.saving = job
     end
-    if state.source == "new" or current ~= state.baseText then
-      return false, "HISTORY CHANGED"
+    local text, reason = Storage.serialize(state.cache, job)
+    if reason then return false, reason end
+    if text then
+      job.text, job.phase = text, "guard"
+      job.keys, job.parts, job.key = nil, nil, nil
     end
-  elseif mainReason ~= "MISSING" then return false, mainReason end
-  -- If the only confirmed source is backup, revalidate it before replacing temp.
-  if not current and state.source ~= "new" then
-    local backup = Storage.read(state.path .. ".bak")
-    if not backup or backup ~= state.baseText then return false, "BACKUP UNAVAILABLE" end
+    return nil
   end
   local tmp, backupPath = state.path .. ".tmp", state.path .. ".bak"
-  if not Storage.writeValidated(tmp, text) then return false, "TEMP WRITE ERROR" end
-  if current then
-    local backupInfo, backupReason = Storage.stat(backupPath)
-    if backupInfo then
-      if not Storage.remove(backupPath) then return false, "BACKUP DELETE ERROR" end
-    elseif backupReason ~= "MISSING" then return false, backupReason end
-    if not Storage.rename(state.path, backupPath) then return false, "BACKUP RENAME ERROR" end
+  if job.phase == "write" then
+    if not Storage.writeValidated(tmp, job.text) then return false, "TEMP WRITE ERROR" end
+    job.phase = "commit"
+    return nil
   end
-  if not Storage.rename(tmp, state.path) then
-    -- Keep both files for recovery. Never delete the sole confirmed backup.
-    return false, "PROMOTE ERROR"
+  local ok, current, committed = Storage.checkBase(state, job.text)
+  if not ok then return false, current end
+  if not committed then
+    if job.phase == "guard" then job.phase = "write"; return nil end
+    -- Temp could have changed since the preceding callback. No rename or
+    -- backup deletion is permitted until both source and candidate agree.
+    if Storage.read(tmp) ~= job.text then return false, "TEMP CHANGED" end
+    if current then
+      local backupInfo, backupReason = Storage.stat(backupPath)
+      if backupInfo then
+        if not Storage.remove(backupPath) then return false, "BACKUP DELETE ERROR" end
+      elseif backupReason ~= "MISSING" then return false, backupReason end
+      if not Storage.rename(state.path, backupPath) then return false, "BACKUP RENAME ERROR" end
+    end
+    if not Storage.rename(tmp, state.path) then
+      -- Keep both files for recovery. Never delete the sole confirmed backup.
+      return false, "PROMOTE ERROR"
+    end
+    if Storage.read(state.path) ~= job.text then return false, "PROMOTE READ ERROR" end
   end
-  local confirmed = Storage.read(state.path)
-  if confirmed ~= text then return false, "PROMOTE READ ERROR" end
-  state.baseText, state.source = text, "main"
+  state.baseText, state.source = job.text, "main"
   return true
 end
 
@@ -1024,19 +1067,33 @@ function Storage.markDirty(state, now)
   if not state.writable then return false end
   if not state.dirty then state.attempts, state.nextAttempt = 0, now or 0 end
   state.dirty = true
+  state.revision = (state.revision or 0) + 1
   return true
 end
 
 function Storage.service(state, now)
-  if not state.dirty or state.attempts >= Storage.maxAttempts
-     or now < state.nextAttempt then return false end
-  state.attempts = state.attempts + 1
+  if not state.dirty or now < state.nextAttempt then return false end
+  local job = state.saving
+  if not job or not job.active then
+    if state.attempts >= Storage.maxAttempts then return false end
+    state.attempts = state.attempts + 1
+    job = job or {revision=state.revision, phase="serialize"}
+    job.active, state.saving = true, job
+  end
   local ok, reason = Storage.save(state)
+  job = state.saving -- Serialization may restart after a new count.
+  if ok == nil then return false end -- One bounded phase; still in progress.
   if ok then
-    state.dirty, state.error, state.attempts = false,
-      state.pending and "COUNT UNAVAILABLE" or nil, 0
+    state.dirty = state.revision ~= job.revision
+    state.error = state.pending and "COUNT UNAVAILABLE" or nil
+    state.attempts, state.nextAttempt, state.saving = 0, now, nil
     return true
   end
+  -- Keep an immutable completed snapshot across retries, including a failed
+  -- readback after promotion. Newer counts wait for its confirmation, then
+  -- save against the confirmed base; they cannot be mistaken for foreign edits.
+  if job.text then job.phase, job.active = "guard", false
+  else state.saving = nil end
   state.error = reason or "SAVE ERROR"
   state.nextAttempt = now + Storage.retryTicks
   return false
@@ -1045,6 +1102,7 @@ end
 function Storage.retry(state, now)
   -- Explicit retry after media recovery; it never increments a model count.
   if not state.dirty then return false end
+  if state.saving and state.saving.active then return true end
   state.attempts, state.nextAttempt = 0, now or 0
   return true
 end
@@ -5652,7 +5710,8 @@ function OMP_AUTO.sync(widget)
     resetSessionStats()
     resetSessionEvidence()
     timerThresholdArmed = nil
-    widget.layoutSignature = nil
+    -- M1/M2 share the same layout. display() refreshes retained properties
+    -- and the identity-dependent image without rebuilding every LVGL object.
   end
   OMP_AUTO.display(widget, true, nil)
 end

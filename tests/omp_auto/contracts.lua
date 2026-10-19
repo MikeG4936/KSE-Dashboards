@@ -272,7 +272,7 @@ eq(ra.S.tempMax,25,"new model extrema begin with its own telemetry")
 eq(ra.A.flightDeadVoiceLatched,false,"class swap resets alert state")
 eq(ra.count(),0,"class swap does not inherit timer qualification")
 eq(retained.builds,builds,"background selection does not build UI")
-retained:step(true);eq(retained.builds,builds+1,"foreground rebuilds swapped model")
+retained:step(true);eq(retained.builds,builds,"foreground updates retained UI for swapped model")
 retained:noRF("flight and ground swap")
 
 -- Missing, stale, calculated, foreign, and ambiguous telemetry must not guess.
@@ -404,7 +404,13 @@ __mock.timer.value=0;counts:step(false)
 __mock.timer.value=25;counts:step(false)
 eq(counts.audit.cache()["OMP M2"],1,"M2 local counter key")
 eq(counts.audit.cache()["OMP M1"],1,"M1 count retained")
-counts:settle(false)
+-- Persistence may span bounded phases; drive ordinary background callbacks
+-- until both qualified counts are present, without fixing a phase count.
+for _=1,100 do
+  local text=fs.files["/flights-count.csv"] or ""
+  if string.find(text,"OMP M1,1",1,true) and string.find(text,"OMP M2,1",1,true) then break end
+  counts:step(false)
+end
 assert(string.find(fs.files["/flights-count.csv"] or "","OMP M1,1",1,true),"M1 persists")
 assert(string.find(fs.files["/flights-count.csv"] or "","OMP M2,1",1,true),"M2 persists")
 local png="\137PNG\r\n\26\n".."\0\0\0\13IHDR".."\0\0\0\100\0\0\0\100"..string.rep("\0",30)

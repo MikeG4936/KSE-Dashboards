@@ -101,6 +101,13 @@ local function fixture(selection,counter)
     end
     error("history loading did not finish")
   end
+  function t:finishSave(visible)
+    for _=1,100 do
+      if not self.audit.store().dirty then return end
+      self:step(visible)
+    end
+    error("history saving did not finish")
+  end
   function t:hasText(text)
     for _,item in ipairs(self.objects) do
       local value=item.properties.text

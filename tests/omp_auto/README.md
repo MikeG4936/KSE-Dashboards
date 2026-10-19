@@ -8,6 +8,8 @@ python3 tests/omp_auto/run.py --runner ../kse-edgetx-build/edgetx-run
 
 The runner instruments temporary copies of both complete dashboards with a test-only `audit` descriptor. Real lifecycle functions and retained render callbacks run at 800×480, 480×320, and 480×272. No production test exports or desktop Lua libraries are required.
 
+The separate [OMP callback CPU suite](../omp_cpu/README.md) checks native 60/75 sensor-slot bounds, retained object/image/cell updates through M1/M2 transitions, hidden handoff and pending history saves against complete callback instruction gates.
+
 The fixture extends the shared behavior/storage mocks with native telemetry slot metadata: `telem1` source IDs advance by three per slot, valid empty slots return tables, raw and calculated sensors remain distinct, and source values report current/fresh flags. Contracts cover:
 
 - Appended option order, preserved original ten slots and additional fuel setting, local counter override without rewriting its saved preference, and manual OMP fallback.

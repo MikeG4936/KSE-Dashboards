@@ -108,8 +108,8 @@ elseif scenario=="loading-handoff" then
   assertHistory(t,values)
   assert(shared.dirty and not shared.pending,"load completion lost pending count or failed to mark dirty")
   assert(fs.files[historyPath]==text,"load completion saved in the same callback")
-  t:step(false)
-  assert(not shared.dirty and not shared.error,"following callback did not save transferred count")
+  t:finishSave(false)
+  assert(not shared.dirty and not shared.error,"later callbacks did not save transferred count")
   assert(fs.files[historyPath..".bak"]==text,"dirty handoff did not preserve backup")
   local committed=fs.files[historyPath]
   t:step(false);t:step(true)
@@ -118,6 +118,25 @@ elseif scenario=="loading-handoff" then
   t:settle(true)
   assert(historyIO()==calls,"fresh Rotorflight mode restarted local history IO")
   assertHistory(t,values)
+  t:report(scenario)
+elseif scenario=="foreground-save-max-bytes" then
+  local t=fixture(1,1)
+  local values,text=seedHistory(t,200)
+  local old=values.M001
+  values.M001=nil
+  values["M001"..string.rep("x",32768-#text)]=old
+  text=assert(t.audit.Storage.serialize(values));assert(#text==32768)
+  fs.files[historyPath]=text
+  t:create();t:update();t:finishLoad(true)
+  t:connect("RS4 Venom");t:settle(true)
+  __mock.timer.value=25;t:step(true)
+  values["Shared Heli"]=8
+  assertHistory(t,values)
+  assert(t.audit.store().dirty,"qualified flight did not start persistence")
+  t:finishSave(true)
+  assert(fs.files[historyPath]==assert(t.audit.Storage.serialize(values)),"foreground save lost counts")
+  assert(fs.files[historyPath..".bak"]==text,"foreground save did not retain backup")
+  assert(not t.audit.store().error,"foreground save did not clear error")
   t:report(scenario)
 elseif scenario=="partial-zone" or scenario=="partial-zone-theme9" then
   assert(variant=="KSE4" and LCD_W==800 and LCD_H==480,"partial-zone target")

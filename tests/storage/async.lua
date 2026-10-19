@@ -21,7 +21,7 @@ end
 lvgl = {clear=function() end, label=function() end}
 
 local first = dofile(dashboardDir .. "/" .. ownerVariant .. ".lua")
-local second = scenario == "handoff"
+local second = (scenario == "handoff" or scenario == "save_handoff")
                and dofile(dashboardDir .. "/" .. contenderVariant .. ".lua") or first
 local function options(counter)
   return {Theme=1, TxBatt=1, HeliType=1, BattRsv=20, CountSrc=counter or 1,
@@ -57,8 +57,12 @@ local function persisted(api, widget, expected, seconds)
   local state = api.audit.state()
   eq("completion makes qualified event dirty", state.dirty, true)
   eq("completion defers persistence", fs.files[path], original)
-  callback(api, widget, __mock.now + 1, seconds)
-  eq("later callback persists exact complete history", fs.files[path], expected)
+  local saveSteps=0
+  while state.dirty do
+    saveSteps=saveSteps+1;assert(saveSteps<100,"save phases did not finish")
+    callback(api, widget, __mock.now + 1, seconds)
+  end
+  eq("later callbacks persist exact complete history", fs.files[path], expected)
   eq("successful save clears dirty state", state.dirty, false)
   eq("successful save retains original backup", fs.files[path .. ".bak"], original)
   callback(api, widget, __mock.now + 10, seconds)
@@ -180,6 +184,63 @@ elseif scenario == "handoff" then
   eq("completed load displays current aircraft count", first.audit.count(), 8)
   eq("completed load consumes both pending events", state.pending, nil)
   persisted(first, replacement, history(8, 21), 30)
+elseif scenario == "save_simulation" or scenario == "save_counter_change"
+    or scenario == "save_handoff" then
+  callback(first,owner,1000,0)
+  drain(first,owner,0)
+  callback(first,owner,__mock.now+10,30)
+  eq("flight before save pause qualifies once",state.cache.Fixture,8)
+  local wanted=scenario=="save_simulation" and "write" or "serialize"
+  for _=1,100 do
+    job=state.saving
+    if job and job.phase==wanted and (wanted~="serialize" or (job.index and job.index>1)) then break end
+    callback(first,owner,__mock.now+10,30)
+  end
+  job=assert(state.saving,"save job not started")
+  eq("save boundary reached before mutation",job.phase,wanted)
+  local phase,index,text,attempts,calls=job.phase,job.index,job.text,state.attempts,#fs.calls
+  if scenario=="save_simulation" then
+    local services=first.audit.metrics.rf
+    first.audit.OPT.simTelemetry=true
+    callback(first,owner,__mock.now+10,0)
+    callback(first,owner,__mock.now+10,30,true)
+    callback(first,owner,__mock.now+10,90)
+    eq("simulation retains save job",state.saving==job,true)
+    eq("simulation retains save phase",job.phase,phase)
+    eq("simulation retains immutable snapshot",job.text,text)
+    eq("simulation consumes no extra attempt",state.attempts,attempts)
+    eq("simulation performs no save IO",#fs.calls,calls)
+    eq("simulation pause still services RF",first.audit.metrics.rf-services,3)
+    eq("simulated timer reset cannot count another flight",state.cache.Fixture,8)
+    first.audit.OPT.simTelemetry=false
+    persisted(first,owner,history(8,20),30)
+  elseif scenario=="save_counter_change" then
+    first.update(owner,options(2))
+    eq("counter change retains save job",state.saving==job,true)
+    eq("counter change retains save progress",job.index,index)
+    eq("counter change does not reset save attempt",state.attempts,attempts)
+    eq("counter change performs no save IO",#fs.calls,calls)
+    persisted(first,owner,history(8,20),90)
+    eq("FC callbacks retain local flight count",state.cache.Fixture,8)
+  else
+    __mock.modelName,__mock.modelFile="Other","model-b.yml"
+    local contender=second.create({x=0,y=0,w=800,h=480},options())
+    callback(second,contender,__mock.now+10,0,true)
+    eq("save handoff retains shared state",second.audit.state()==state,true)
+    eq("save handoff retains active job",state.saving==job,true)
+    eq("save handoff keeps one active attempt",state.attempts,attempts)
+    eq("save handoff advances existing phase",job.index>index,true)
+    local progress=job.index
+    calls=#fs.calls
+    callback(first,owner,__mock.now+10,0)
+    callback(first,owner,__mock.now+10,0,true)
+    eq("old owner cannot advance save phase",job.index,progress)
+    eq("old owner cannot perform save IO",#fs.calls,calls)
+    callback(second,contender,__mock.now+10,30)
+    eq("new owner qualifies its own flight",state.cache.Other,21)
+    eq("new owner preserves first aircraft count",state.cache.Fixture,8)
+    persisted(second,contender,history(8,21),30)
+  end
 else
   error("Unknown scenario " .. tostring(scenario))
 end

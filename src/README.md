@@ -31,6 +31,8 @@ Validation entry points:
 - [MSP admission](../tests/msp_admission/README.md): pinned RF queue, continuation stages and embedded/external servicing.
 - [Storage](../tests/storage/README.md): recovery, handoff and instruction profiles.
 - [Complete callback CPU budgets](../tests/cpu_budget/README.md): Auto type transitions, saved-model takeover, counter selection and incremental recovery with retained UI properties.
+- [OMP callback CPU budgets](../tests/omp_cpu/README.md): retained M1/M2 transitions, native sensor bounds and overlapping saves.
+- [RF/picker callback CPU budgets](../tests/rf_cpu/README.md): pinned RF Tool startup, CRSF bursts, six-profile selection/retries and full-history saves.
 - [Picker](../tests/picker/README.md) and [rendering](../tests/render/README.md): capabilities, preserved style and actual render-function smoke coverage.
 - [Image bounds](../tests/assets/README.md): supplied assets, PNG/BMP headers and bounded resource checks before native decoding.
 - [Compiler tooling](../tools/edgetx/README.md): every-prototype EdgeTX limits and project margins.

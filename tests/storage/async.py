@@ -14,7 +14,7 @@ import tempfile
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
-CASES = ("expired", "simulation", "counter_change")
+CASES = ("expired", "simulation", "counter_change", "save_simulation", "save_counter_change")
 
 
 def instrument(source):
@@ -52,6 +52,8 @@ def main():
         runs = [(case, variant, variant) for case in CASES
                 for variant in ("KSE4", "KSE5")]
         runs.extend(("handoff", owner, contender) for owner, contender in
+                    (("KSE4", "KSE5"), ("KSE5", "KSE4")))
+        runs.extend(("save_handoff", owner, contender) for owner, contender in
                     (("KSE4", "KSE5"), ("KSE5", "KSE4")))
         for scenario, owner, contender in runs:
             label = f"{scenario}/{owner}/{contender}"

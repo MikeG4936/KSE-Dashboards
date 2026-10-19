@@ -13,7 +13,7 @@ SCENARIOS = ("auto-type-change", "auto-type-change-theme9",
              "auto-initial-electric", "auto-initial-electric-theme9",
              "model-takeover-20", "model-takeover-200", "counter-switch",
              "counter-switch-max-bytes", "comment-heavy-max-bytes",
-             "backup-recovery", "loading-handoff")
+             "backup-recovery", "loading-handoff", "foreground-save-max-bytes")
 
 
 def instrument(source):
