@@ -2,11 +2,11 @@ local function refreshOwned(widget, event, touchState)
   clearFrameCache()
   batteryProfiles.prepare(widget)
   OMP_AUTO.sync(widget)
-  ensureLayout(widget, event ~= nil)
+  local built = ensureLayout(widget, event ~= nil)
   local count, status, connected = FC.count, FC.status, widget.profileConnectedForDisplay
-  local serviced = serviceTelemetry(true)
+  local serviced = serviceTelemetry(true, built)
   batteryProfiles.service(widget, true, event, touchState)
-  if serviced or widget.kseUiDirty or count ~= FC.count or status ~= FC.status
+  if built or serviced or widget.kseUiDirty or count ~= FC.count or status ~= FC.status
      or connected ~= widget.profileConnectedForDisplay then updateUiState(widget) end
   widget.kseUiDirty = nil
 end
@@ -126,6 +126,7 @@ local function updateOwned(widget, options)
   clearFrameCache()
   G.prepareWidget(widget)
   buildUi(widget)
+  updateUiState(widget)
 end
 function G.initializeOwner(widget)
   flightStore = WidgetOwner.sharedStore(flightStore)
@@ -159,7 +160,13 @@ end
 local function refresh(widget, event, touchState)
   if not widget then return end
   if not WidgetOwner.claim(widget, true) then WidgetOwner.blocked(widget); return end
-  if not widget.kseInitialized then G.initializeOwner(widget) end
+  if not widget.kseInitialized then
+    G.initializeOwner(widget)
+    -- Keep initialization and construction in different callback budgets.
+    -- RF, timer qualification and telemetry still run on this first frame.
+    backgroundOwned(widget)
+    return
+  end
   refreshOwned(widget, event, touchState)
 end
 local function background(widget)

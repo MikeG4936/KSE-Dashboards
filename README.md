@@ -176,6 +176,8 @@ Set Timer 1 to run during powered flight and pause during idle or hold. Count-up
 
 History is shared between KSE4 and KSE5 and stored by model name. Auto Elec/Nitro uses the confirmed FC name instead of the EdgeTX model name; OMP Auto uses **OMP M1** and **OMP M2**. Counts are saved in `/flights-count.csv` on the SD card. KSE creates this file automatically when it saves the first flight; you do not need to copy the supplied starter file. For file errors, see [Count-history recovery](#count-history-recovery).
 
+The count can briefly show **-- Flights** while history loads. KSE keeps the dashboard responsive by validating history in small batches. A flight that reaches the timer threshold during loading is retained and added once the history is fully validated. File errors still require the recovery steps below; restarting the radio discards any unsaved counts.
+
 **Rotorflight FC counter:** Rotorflight decides whether each flight lasted long enough to count. Disarming and arming again can count as another flight, even without unplugging the battery. KSE displays that total separately from KSE Counter and updates it after confirmed disarm; it does not change or reset it. Timer 1 and a count file are not required for FC counting.
 
 **OMPHOBBY always uses KSE Counter.** Your saved Flight Counter choice takes effect again if you switch to a Rotorflight helicopter type.

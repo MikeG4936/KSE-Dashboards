@@ -1,7 +1,8 @@
 -- Shared KSE count storage; assembled into each standalone dashboard.
 -- EdgeTX v2.12.1: io.read hides errors as ""; fstat size is required.
 -- Global rename/del return FatFS FRESULT; only numeric zero means success.
-local Storage = { maxBytes=32768, maxEntries=200, retryTicks=500, maxAttempts=3 }
+local Storage = { maxBytes=32768, maxEntries=200, batchLines=24,
+                  retryTicks=500, maxAttempts=3 }
 
 function Storage.stat(path)
   if type(_G.fstat) ~= "function" then return nil, "FSTAT UNAVAILABLE" end
@@ -42,15 +43,24 @@ function Storage.read(path)
   return table.concat(parts)
 end
 
-function Storage.parse(text)
-  if type(text) ~= "string" or text == "" then return nil, "EMPTY HISTORY" end
-  if #text > Storage.maxBytes then return nil, "HISTORY TOO LARGE" end
-  local values, entries, header = {}, 0, false
-  for line in string.gmatch(text, "[^\r\n]+") do
+function Storage.parse(job)
+  if not job.lines then
+    if job.text == "" then return nil, "EMPTY HISTORY" end
+    job.lines = string.gmatch(job.text, "[^\r\n]+")
+    job.values, job.entries, job.header = {}, 0, false
+  end
+  -- Count every line, including comments, against the same callback budget.
+  -- Values remain private until EOF; a valid prefix is never a usable cache.
+  for _ = 1, Storage.batchLines do
+    local line = job.lines()
+    if not line then
+      if not job.header and job.entries == 0 then return nil, "EMPTY HISTORY" end
+      return job.values
+    end
     local n = string.match(line, "^%s*(.-)%s*$")
     if n == "model_name,flight_count" then
-      if header or entries > 0 then return nil, "MALFORMED HISTORY" end
-      header = true
+      if job.header or job.entries > 0 then return nil, "MALFORMED HISTORY" end
+      job.header = true
     elseif string.sub(n, 1, 1) == "#" then
       -- A model row beginning with # is indistinguishable from a comment in
       -- the existing format. Quarantine it rather than silently dropping it.
@@ -63,24 +73,15 @@ function Storage.parse(text)
       local count = math.tointeger(tonumber(digits))
       if not key or key == "" or string.find(key, "%c")
          or not count or count < 0 or count > 2147483647
-         or count ~= math.floor(count) or values[key] ~= nil then
+         or count ~= math.floor(count) or job.values[key] ~= nil then
         return nil, "MALFORMED HISTORY"
       end
-      entries = entries + 1
-      if entries > Storage.maxEntries then return nil, "TOO MANY MODELS" end
-      values[key] = count
+      job.entries = job.entries + 1
+      if job.entries > Storage.maxEntries then return nil, "TOO MANY MODELS" end
+      job.values[key] = count
     end
   end
-  if not header and entries == 0 then return nil, "EMPTY HISTORY" end
-  return values
-end
-
-function Storage.readHistory(path)
-  local text, reason = Storage.read(path)
-  if not text then return nil, reason end
-  local values, parseReason = Storage.parse(text)
-  if not values then return nil, parseReason end
-  return { values=values, text=text, path=path }
+  return nil, nil -- Pending: continue this immutable snapshot next callback.
 end
 
 function Storage.new(path)
@@ -88,32 +89,67 @@ function Storage.new(path)
           error=nil, attempts=0, nextAttempt=0, source=nil}
 end
 
-function Storage.load(state)
-  -- Never reload an in-memory dirty generation and lose a counted event.
-  if state.dirty then return state.cache end
-  state.writable=false
-  local main, mainReason = Storage.readHistory(state.path)
-  if main then
-    state.cache, state.source, state.baseText = main.values, "main", main.text
-    state.writable, state.error = true, nil
-    return state.cache
+function Storage.beginLoad(state)
+  -- A handoff/reselection must retain both dirty counts and unfinished reads.
+  if state.dirty or state.loading then return end
+  state.cache, state.source, state.baseText = nil, nil, nil
+  state.writable, state.error = false, nil
+  state.loading = {stage=1, reasons={}}
+end
+
+function Storage.finishLoad(state, values, source, text, writable, reason, now)
+  state.cache, state.source, state.baseText = values, source, text
+  state.writable, state.error, state.loading = writable, reason, nil
+  -- Timer crossings observed during loading belong to the shared store, not
+  -- the current widget/model. Quarantine cannot authorize their persistence.
+  if writable and state.pending then
+    for key, count in pairs(state.pending) do
+      local previous = values[key] or 0
+      local accepted = math.min(count, 2147483647 - previous)
+      if accepted > 0 then
+        values[key] = previous + accepted
+        Storage.markDirty(state, now)
+      end
+      if accepted < count then
+        state.pending[key] = count - accepted
+        state.error = "COUNT UNAVAILABLE"
+      else
+        state.pending[key] = nil
+      end
+    end
+    if next(state.pending) == nil then state.pending = nil end
   end
-  local backup, backupReason = Storage.readHistory(state.path .. ".bak")
-  if backup then
-    state.cache, state.source, state.baseText = backup.values, "backup", backup.text
-    -- An unreadable/malformed main must not be replaced with a partial fallback.
-    state.writable = mainReason == "MISSING"
-    state.error = state.writable and "RECOVERED BACKUP" or mainReason
-    return state.cache
+  return true
+end
+
+function Storage.stepLoad(state, now)
+  local job = state.loading
+  if not job then return false end
+  local reason, values
+  if job.text == nil then
+    local suffix = job.stage == 1 and "" or job.stage == 2 and ".bak" or ".tmp"
+    job.text, reason = Storage.read(state.path .. suffix)
   end
-  local temp, tempReason = Storage.readHistory(state.path .. ".tmp")
-  if temp then
-    state.cache, state.source, state.baseText = temp.values, "temporary", temp.text
-    state.error = "TEMP UNCONFIRMED"
-    return state.cache -- A syntactically valid prefix cannot prove full history.
+  if job.text then
+    values, reason = Storage.parse(job)
+    if not values and not reason then return false end
+    if values then
+      local source = job.stage == 1 and "main" or job.stage == 2 and "backup" or "temporary"
+      local writable = job.stage == 1 or (job.stage == 2 and job.reasons[1] == "MISSING")
+      if job.stage == 2 then reason = writable and "RECOVERED BACKUP" or job.reasons[1]
+      elseif job.stage == 3 then reason = "TEMP UNCONFIRMED" end
+      return Storage.finishLoad(state, values, source, job.text, writable, reason, now)
+    end
   end
-  if mainReason == "MISSING" and backupReason == "MISSING"
-     and tempReason == "MISSING" then
+  job.reasons[job.stage] = reason
+  if job.stage < 3 then
+    -- Even a last-line failure yields before starting the next candidate.
+    job.stage = job.stage + 1
+    job.text, job.lines, job.values = nil, nil, nil
+    return false
+  end
+  if job.reasons[1] == "MISSING" and job.reasons[2] == "MISSING"
+     and job.reasons[3] == "MISSING" then
     local directory = string.match(state.path, "^(.*)/[^/]+$")
     -- FatFS rejects f_stat("/") even on a healthy card. Opening a directory
     -- works for the root too; the discarded iterator closes through native GC.
@@ -123,17 +159,30 @@ function Storage.load(state)
       opened, iterator = pcall(_G.dir, directory == "" and "/" or directory or ".")
     end
     if opened and type(iterator) == "function" then
-      state.cache, state.source, state.baseText = {}, "new", nil
-      state.writable, state.error = true, nil
-      return state.cache
+      return Storage.finishLoad(state, {}, "new", nil, true, nil, now)
     end
-    state.error = "STORAGE UNAVAILABLE"
+    reason = "STORAGE UNAVAILABLE"
   else
-    state.error = mainReason ~= "MISSING" and mainReason
-                  or backupReason ~= "MISSING" and backupReason or tempReason
+    reason = job.reasons[1] ~= "MISSING" and job.reasons[1]
+             or job.reasons[2] ~= "MISSING" and job.reasons[2] or job.reasons[3]
   end
-  state.cache, state.source, state.baseText = nil, nil, nil
-  return nil
+  return Storage.finishLoad(state, nil, nil, nil, false, reason, now)
+end
+
+function Storage.increment(state, key, now)
+  if state.loading then
+    state.pending = state.pending or {}
+    local count = state.pending[key] or 0
+    if count < 2147483647 then state.pending[key] = count + 1; return true end
+  elseif state.writable and state.cache then
+    local previous = state.cache[key] or 0
+    if previous < 2147483647 then
+      state.cache[key] = previous + 1
+      return Storage.markDirty(state, now)
+    end
+  end
+  state.error = state.error or "COUNT UNAVAILABLE"
+  return false
 end
 
 function Storage.serialize(values)
@@ -238,7 +287,8 @@ function Storage.service(state, now)
   state.attempts = state.attempts + 1
   local ok, reason = Storage.save(state)
   if ok then
-    state.dirty, state.error, state.attempts = false, nil, 0
+    state.dirty, state.error, state.attempts = false,
+      state.pending and "COUNT UNAVAILABLE" or nil, 0
     return true
   end
   state.error = reason or "SAVE ERROR"

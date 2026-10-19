@@ -293,6 +293,7 @@ __runContracts=function()
   local opts={Theme=1,TxBatt=1,HeliType=1,BattRsv=20,CountSrc=1,MinFlight=30,
               RxPackMin="6.60",RxPackMax="8.40",MotorSw=99}
   local w=t.create({x=0,y=0,w=800,h=480},opts)
+  for _=1,3 do t.background(w) end -- Finish first-install history phases.
   local function count(start,value)
     m.timer={start=start,value=value}; frame(); t.tickFlightCount()
     return t.getFlightCount()

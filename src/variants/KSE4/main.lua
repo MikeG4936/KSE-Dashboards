@@ -486,8 +486,8 @@ local function buildTile(x, y, w, h, label, unit)
     elseif unit == "(°C)" then
       caption = "ESC °C"
     end
-    newLabel(x + 2, y + 4, w - 4, caption,
-             G.fontSmall, C_DIM, CENTERED)
+    local title = newLabel(x + 2, y + 4, w - 4, caption,
+                            G.fontSmall, C_DIM, CENTERED)
     local valueY = y + math.max(20, G.y(32))
     if G.screen480x320 then
       -- MIDSIZE is 24 px tall on this target. Center the value itself in the
@@ -498,14 +498,15 @@ local function buildTile(x, y, w, h, label, unit)
       valueY = valueY + 4
     end
     return {
+      caption = title,
       value = newLabel(x + 2, valueY, w - 4, "",
                        G.fontValue, C_TEXT, CENTERED),
       footer = newLabel(x + 2, y + h - 16, w - 4, "",
                         G.fontSmall, C_DIM, CENTERED),
     }
   end
-  newLabel(x + G.x(10), y + G.y(10), w - G.x(20), label,
-           G.fontSmall, C_DIM)
+  local title = newLabel(x + G.x(10), y + G.y(10), w - G.x(20), label,
+                          G.fontSmall, C_DIM)
   newLabel(x + w - G.x(45), y + G.y(10), G.x(35), unit,
            G.fontSmall, C_DIM, RIGHT)
   local valueY = y + G.y(54)
@@ -514,6 +515,7 @@ local function buildTile(x, y, w, h, label, unit)
     valueY = y + math.floor((h - 32) / 2)
   end
   return {
+    caption = title,
     value = newLabel(x + G.x(10), valueY, w - G.x(20), "",
                      G.fontValue, C_TEXT,
                      G.screen800x480 and CENTERED or 0),
@@ -564,35 +566,39 @@ local function buildBottom()
     center=newLabel(x, textY, w, "", G.fontBattery, C_BLACK, CENTERED),
   }
   local B = V.bottom
-  if OPT.battBarMode == 1 then
-    B.mode = "nitro"
-    B.minimum = newLabel(x, barY + barH + G.y(4), G.x(220), "",
-                         G.fontSmall, C_DIM)
-    B.range = newLabel(x + w - G.x(220), barY + barH + G.y(4),
-                       G.x(220),
-                       string.format("%.1fV - %.1fV", OPT.rxPackMin, OPT.rxPackMax),
-                       G.fontSmall, C_DIM, RIGHT)
-  else
-    B.mode = "electric"
-    -- The reference-size footer needs less air below the taller bar. Keep the
-    -- compact-radio spacing unchanged because those layouts are independently
-    -- fitted to their shorter screens.
-    local footerGap = G.screen800x480 and G.y(1) or G.y(4)
-    local fy = barY + barH + footerGap
-    local tickW, halfTick = G.x(60), G.x(30)
-    B.ticks = {
-      newLabel(x,                    fy, tickW, "0%",   G.fontSmall, C_DIM),
-      newLabel(x + w*.25 - halfTick, fy, tickW, "25%",  G.fontSmall, C_DIM, CENTERED),
-      newLabel(x + w*.50 - halfTick, fy, tickW, "50%",  G.fontSmall, C_DIM, CENTERED),
-      newLabel(x + w*.75 - halfTick, fy, tickW, "75%",  G.fontSmall, C_DIM, CENTERED),
-      newLabel(x + w - tickW,        fy, tickW, "100%", G.fontSmall, C_DIM, RIGHT),
-    }
-  end
+  B.minimum = newLabel(x, barY + barH + G.y(4), G.x(220), "",
+                       G.fontSmall, C_DIM)
+  B.range = newLabel(x + w - G.x(220), barY + barH + G.y(4),
+                     G.x(220),
+                     string.format("%.1fV - %.1fV", OPT.rxPackMin, OPT.rxPackMax),
+                     G.fontSmall, C_DIM, RIGHT)
+  -- The reference-size footer needs less air below the taller bar. Keep the
+  -- compact-radio spacing unchanged because those layouts are independently
+  -- fitted to their shorter screens.
+  local footerGap = G.screen800x480 and G.y(1) or G.y(4)
+  local fy = barY + barH + footerGap
+  local tickW, halfTick = G.x(60), G.x(30)
+  B.ticks = {
+    newLabel(x,                    fy, tickW, "0%",   G.fontSmall, C_DIM),
+    newLabel(x + w*.25 - halfTick, fy, tickW, "25%",  G.fontSmall, C_DIM, CENTERED),
+    newLabel(x + w*.50 - halfTick, fy, tickW, "50%",  G.fontSmall, C_DIM, CENTERED),
+    newLabel(x + w*.75 - halfTick, fy, tickW, "75%",  G.fontSmall, C_DIM, CENTERED),
+    newLabel(x + w - tickW,        fy, tickW, "100%", G.fontSmall, C_DIM, RIGHT),
+  }
+  setVisible(B.minimum, false)
+  setVisible(B.range, false)
+  for _, tickLabel in ipairs(B.ticks) do setVisible(tickLabel, false) end
 end
 
 local function updateBottom()
   local B = V.bottom
   if not B then return end
+  B.mode = OPT.battBarMode == 1 and "nitro" or "electric"
+  setVisible(B.minimum, B.mode == "nitro")
+  setVisible(B.range, B.mode == "nitro")
+  for _, tickLabel in ipairs(B.ticks) do
+    setVisible(tickLabel, B.mode ~= "nitro" and D.hasBattData)
+  end
   if OPT.ompAuto and not OMP_AUTO.ready then
     setLabel(B.header, OMP_AUTO.status, C_YELLOW)
     setVisible(B.fill, false)
@@ -727,6 +733,8 @@ end
 
 local function updateUiState()
   if not V.modelName then return end
+  local becCaption = OPT.heliType == HELI_NITRO and "BATT" or "BEC"
+  setLabel(V.tiles[3].caption, becCaption .. (G.compact and " V" or ""), C_DIM)
   local modelName = getModelName()
   if OPT.simTelemetry then modelName = "SIM · " .. modelName end
   local modelFont = G.fontTop
@@ -833,7 +841,8 @@ local function updateUiState()
   else
     local curr = sensors.getCurr()
     if D.currentValid then
-      setLabel(V.tiles[1].value, tostring(math.ceil(curr)), C_TEXT)
+      setLabel(V.tiles[1].value, tostring(math.ceil(curr)), C_TEXT, nil, nil, nil, nil,
+               (G.compact or G.screen800x480) and CENTERED or 0)
       setLabel(V.tiles[1].footer,
                fmtNum("currMax", "max %d", math.ceil(statCurrMax())), C_YELLOW)
     else
@@ -874,7 +883,8 @@ local function updateUiState()
   else
     local temp, tempMax = sensors.getTemp(), statTempMax()
     if D.tempValid then
-      setLabel(V.tiles[4].value, tostring(math.floor(temp)), C_TEXT)
+      setLabel(V.tiles[4].value, tostring(math.floor(temp)), C_TEXT, nil, nil, nil, nil,
+               (G.compact or G.screen800x480) and CENTERED or 0)
       setLabel(V.tiles[4].footer, fmtNum("tempMax", "max %d", math.floor(tempMax)),
                C_YELLOW)
     else
@@ -907,7 +917,6 @@ local function buildUi()
   buildBottom()
   batteryProfiles.buildArmingBanner()
   batteryProfiles.buildPrompt()
-  updateUiState()
 end
 
 local function ensureLayout(widget, fullScreen)

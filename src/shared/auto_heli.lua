@@ -22,10 +22,9 @@ function AUTO_HELI.apply(widget, name)
   A.lastDataTick = -1
   clearFrameCache()
   for key in pairs(RESOLVED) do RESOLVED[key] = nil end
-  -- Names, images and counts update through retained objects. Keep their layout
-  -- for same-type sessions so confirmation does not rebuild the entire UI in
-  -- the telemetry/RF callback. A real type change still rebuilds in foreground.
-  if typeChanged then widget.layoutSignature = nil end
+  -- Both renderers retain the Electric/Nitro objects and update their captions
+  -- and visibility. Identity/type confirmation must not rebuild the screen in
+  -- the same callback as telemetry and RF connection processing.
   -- Background confirmation can consume the forced telemetry sample before the
   -- next refresh. Retained labels must still update on that foreground return.
   widget.kseUiDirty = true

@@ -34,7 +34,12 @@ for _,full in ipairs({false,true}) do
  local data=assert(Storage.serialize(values))
  fs.files={["/flights-count.csv"]=data};fs.calls={};fs.faults={}
  local state=Storage.new("/flights-count.csv")
- local loadCost=measure(function()assert(Storage.load(state))end)
+ Storage.beginLoad(state)
+ local loadCost=0
+ while state.loading do
+  loadCost=math.max(loadCost,(measure(Storage.stepLoad,state,0)))
+ end
+ assert(state.cache,state.error)
  Storage.markDirty(state,0)
  -- Force ordinary replacement, not the idempotent no-op path, without growth.
  state.cache["Model 200"]=199
@@ -62,7 +67,7 @@ text=assert(Storage.serialize(values));assert(#text==32768)
 fs.files={["/flights-count.csv"]=text}
 local opts={CountSrc=1,HeliType=3,MinFlight=30,MotorSw=99}
 local init,w=measure(t.create,{x=0,y=0,w=800,h=480},opts)
-m.now=0;m.timer={start=0,value=0};t.background(w)
+m.now=0;m.timer={start=0,value=0};while t.state.loading do t.background(w) end;t.background(w)
 m.now=10;m.timer={start=0,value=30};t.background(w)
 m.now=20
 local save=measure(t.background,w)

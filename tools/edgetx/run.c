@@ -1,6 +1,7 @@
 /* Small ROM-library host, not a transmitter/simulator implementation. */
 #define LUA_LIB
 #include <stdio.h>
+#include <string.h>
 #include "lua.h"
 #include "lauxlib.h"
 #include "lualib.h"
@@ -29,6 +30,9 @@ static int host_print(lua_State *L) {
 
 /* Count Lua VM instructions for isolated mocked paths; this is not radio time. */
 static unsigned long measured_instructions;
+static int measuring, source_exceeded;
+static const char *measured_source;
+static lua_Integer source_budget;
 static void count_instruction(lua_State *L, lua_Debug *ar) {
   (void)L; (void)ar;
   ++measured_instructions;
@@ -36,14 +40,57 @@ static void count_instruction(lua_State *L, lua_Debug *ar) {
 static int host_measure(lua_State *L) {
   luaL_checktype(L, 1, LUA_TFUNCTION);
   lua_Hook previous = lua_gethook(L);
-  if (previous == count_instruction)
+  if (measuring)
     return luaL_error(L, "nested measure calls are unsupported");
   int mask = lua_gethookmask(L), interval = lua_gethookcount(L);
   measured_instructions = 0;
+  measuring = 1;
   lua_sethook(L, count_instruction, LUA_MASKCOUNT, 1);
   int status = lua_pcall(L, lua_gettop(L) - 1, LUA_MULTRET, 0);
   lua_sethook(L, previous, mask, interval);
+  measuring = 0;
   if (status) return lua_error(L);
+  lua_pushinteger(L, (lua_Integer)measured_instructions);
+  lua_insert(L, 1);
+  return lua_gettop(L);
+}
+
+/* Attribute instructions to one exact Lua file; fixture/native boundaries and
+   other Lua files are excluded. This is a lower bound on a radio callback. */
+static void count_source_instruction(lua_State *L, lua_Debug *ar) {
+  lua_getinfo(L, "S", ar);
+  if (ar->source[0] != '@' || strcmp(ar->source + 1, measured_source)) return;
+  ++measured_instructions;
+  if (source_budget > 0 && measured_instructions >= (unsigned long)source_budget) {
+    source_exceeded = 1;
+    /* Stop counting after the first error. The caller checks this flag even if
+       production code catches the hook error with its own pcall. */
+    lua_sethook(L, NULL, 0, 0);
+    luaL_error(L, "CPU limit");
+  }
+}
+static int host_measure_source(lua_State *L) {
+  luaL_checktype(L, 1, LUA_TSTRING);
+  lua_Integer budget = luaL_checkinteger(L, 2);
+  luaL_argcheck(L, budget >= 0, 2, "budget must be nonnegative");
+  luaL_checktype(L, 3, LUA_TFUNCTION);
+  if (measuring) return luaL_error(L, "nested measure calls are unsupported");
+  lua_Hook previous = lua_gethook(L);
+  int mask = lua_gethookmask(L), interval = lua_gethookcount(L);
+  measured_source = lua_tostring(L, 1); /* Rooted until after lua_pcall. */
+  source_budget = budget;
+  measured_instructions = 0;
+  source_exceeded = 0;
+  measuring = 1;
+  lua_sethook(L, count_source_instruction, LUA_MASKCOUNT, 1);
+  int status = lua_pcall(L, lua_gettop(L) - 3, LUA_MULTRET, 0);
+  lua_sethook(L, previous, mask, interval);
+  measuring = 0;
+  measured_source = NULL;
+  if (source_exceeded) return luaL_error(L, "CPU limit");
+  if (status) return lua_error(L);
+  lua_remove(L, 1);
+  lua_remove(L, 1);
   lua_pushinteger(L, (lua_Integer)measured_instructions);
   lua_insert(L, 1);
   return lua_gettop(L);
@@ -66,6 +113,7 @@ int main(int argc, char **argv) {
   lua_settop(L, 0);
   lua_pushcfunction(L, host_print); lua_setglobal(L, "print");
   lua_pushcfunction(L, host_measure); lua_setglobal(L, "measure");
+  lua_pushcfunction(L, host_measure_source); lua_setglobal(L, "measureSource");
   lua_newtable(L);
   for (int i = 1; i < argc; ++i) {
     lua_pushstring(L, argv[i]); lua_rawseti(L, -2, i - 1);

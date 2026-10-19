@@ -7,11 +7,12 @@ Run with the pinned EdgeTX host documented in [tools/edgetx](../../tools/edgetx/
 ```sh
 python3 tests/storage/run.py --runner ../kse-edgetx-build/edgetx-run
 python3 tests/storage/integration.py --runner ../kse-edgetx-build/edgetx-run
+python3 tests/storage/async.py --runner ../kse-edgetx-build/edgetx-run
 ```
 
 `--implementation path/to/storage.lua` accepts an equivalent module returning the `Storage` table. The driver concatenates a mock, the exact helper source and contracts into a temporary script. The mock has no host filesystem access. It models EdgeTX `io.open/read/write/close`, global `fstat` and `dir`, and global `rename`/`del` returning numeric FatFS status.
 
-Contracts cover successful replacement and retained backup, first-file creation, missing/removed media, reported and silent short writes, readback errors, silently lost close data, strict FRESULT return handling, backup deletion/rename failures, failed promotion/retry, backup-only recovery, both-artifact preference, temporary-only quarantine, empty/malformed/duplicate histories, exact byte/entry boundaries and over-limit rejection, read errors, foreign content changes, bounded retries, idempotent confirmation after a successful promotion with a failed readback, exact 32-bit maximum integer counts, overflow/fraction rejection, and quarantine of comment-shaped model names while preserving the API-version comment. These are mock filesystem contracts, not FatFS crash-consistency or SD-card tests.
+Contracts cover successful replacement and retained backup, first-file creation, missing/removed media, reported and silent short writes, readback errors, silently lost close data, strict FRESULT return handling, backup deletion/rename failures, failed promotion/retry, backup-only recovery, both-artifact preference, temporary-only quarantine, empty/malformed/duplicate histories, exact byte/entry boundaries and over-limit rejection, read errors, foreign content changes, bounded retries, idempotent confirmation after a successful promotion with a failed readback, exact 32-bit maximum integer counts, overflow/fraction rejection, and quarantine of comment-shaped model names while preserving the API-version comment. Incremental-load contracts also cover private partial caches, idempotent load requests, comment-heavy files, pending counts for multiple models, foreign edits during validation, recovery quarantine, and preservation of the representable portion of pending counts at integer overflow. These are mock filesystem contracts, not FatFS crash-consistency or SD-card tests.
 
 The source authority is EdgeTX v2.12.1, commit `1511b3f29152f18c704f1f89b3608e0f71317de9`:
 
@@ -34,11 +35,17 @@ The integration fixtures check that a qualified timer threshold increments once 
 
 The production implementation preserves the existing CSV header, model-key normalization and threshold trigger. It loads the history only for KSE Counter. A missing usable cache yields an unavailable count rather than an invented zero. A valid backup may supply a displayed count while an invalid main keeps the history read-only.
 
+`beginLoad()` schedules work without I/O; it preserves an existing load or dirty cache. `stepLoad()` reads a bounded immutable candidate snapshot, then validates at most 24 nonempty lines per callback, including comments. A failure yields before opening the next candidate. Only a complete valid candidate is published. The ordinary owner callback advances one batch unless constructing UI or simulating telemetry; getters never start I/O. Candidate reads remain synchronous, bounded to 32 KiB, and close their handles within that callback.
+
+Timer thresholds observed during loading are retained as model-keyed deltas in the shared store. Validation applies them once to a writable cache, and persistence waits for a later callback. Completion does not rearm the timer. Read-only recovery keeps pending events in RAM for an explicit reload after repair; integer overflow retains the excess event and warning while saving the representable count. These events are not durable until saved.
+
+`async.py` exercises actual production callbacks with renderer/RF servicing stubbed. It covers an already-expired timer, a threshold crossed while loading followed by simulation pause/resume, switching to the Rotorflight counter before completion, and two model-keyed events across both cross-variant ownership directions. An A→B→A saved-filename sequence must retain the same load job and reject stale widgets. Test-driver loops occur between callbacks, never inside a measured or production load step.
+
 `service()` performs at most three attempts with a 500-tick (five-second) interval. Failure leaves the incremented in-memory count dirty and `FILE ERROR` visible. After correcting the media issue, switch **Flight Counter** away from and back to **KSE Counter**, or recreate the widget, to restart that bounded retry schedule. These actions preserve a dirty count within the loaded dashboard runtime and do not recount the qualifying flight. Restarting the transmitter or unloading the script discards unsaved RAM; this is not a durable retry journal.
 
-A fresh FC-counter session does not load or write the count file. Switching to FC after a local event became dirty still completes that earlier save; a failed pending local save remains visible as `KSE FILE ERROR` alongside the FC count/status. An exhausted retry budget still requires the manual retry action. The integration fixture verifies the retained error state; renderer output is outside its mocked scope.
+A fresh FC-counter session does not load or write the count file. Switching to FC after starting a local load or qualifying a local event still completes that earlier work; a failed pending local save remains visible as `KSE FILE ERROR` alongside the FC count/status. An exhausted retry budget still requires the manual retry action. The integration fixtures verify the retained error state; renderer output is outside their mocked scope.
 
-Simulation, currently not exposed as a widget option, defers filesystem work while retaining any earlier real dirty count. The integration fixture sets `OPT.simTelemetry` directly, confirms no retry attempts or count-file I/O occur during simulated callbacks, and verifies that real callbacks resume persistence without recounting. Model changes retain the shared file cache. A recovered backup is restored to main by the next successful save; loading it alone does not immediately write.
+Simulation, currently not exposed as a widget option, defers filesystem work while retaining any earlier real dirty count or pending load. The integration fixtures set `OPT.simTelemetry` directly, confirm no load progress, retry attempts or count-file I/O occur during simulated callbacks, and verify that real callbacks resume without recounting. Model changes retain the shared file cache and load job. A recovered backup is restored to main by the next successful save; loading it alone does not immediately write.
 
 ## Conservative recovery boundaries
 
@@ -49,7 +56,7 @@ Simulation, currently not exposed as a widget option, defers filesystem work whi
 - When all three names appear missing and the parent directory can be opened with `dir`, a new cache may be created. Because `fstat` merges absence and I/O errors, absence is not provable through this API alone. Final rename never overwrites an existing main/backup: an undiscovered file causes promotion failure. The implementation does not promise to preserve an unreadable orphan temporary file in that ambiguous first-creation case.
 - Readback and optimistic base-content checking reduce accidental overwrites but are not atomic compare-and-swap, SD durability, or concurrent-instance ownership. A same-size external modification during a read is not detectable in general. The dashboard ownership lease separately prevents competing KSE instances from servicing this shared cache; it cannot coordinate external file writers.
 
-Temporary-only quarantine recovery remains manual. Real-media power-cut tests and radio memory/timing validation remain outstanding. Synchronous full-file validation creates allocation/work bursts; these desktop fixtures do not establish radio callback budgets, heap headroom or durable SD flush behavior.
+Temporary-only quarantine recovery remains manual. Real-media power-cut tests and radio memory/timing validation remain outstanding. Validation is incremental, but candidate reads and saves remain synchronous. These desktop fixtures do not establish native I/O latency, heap headroom or durable SD flush behavior.
 
 ## Instruction characterization
 
@@ -57,6 +64,6 @@ Temporary-only quarantine recovery remains manual. Real-media power-cut tests an
 python3 tests/storage/profile.py --runner ../kse-edgetx-build/edgetx-run
 ```
 
-The fixture measures 200-model histories at typical and maximum (32 KiB) file sizes, covering isolated load/save and complete local-counter create/background-save callbacks with RF and renderer entry points stubbed. Each measured path must remain below 15,000 Lua instructions. Counts include Lua filesystem-mock overhead; they exclude native I/O time and the invoked RF/render work needed to establish a whole-radio callback budget.
+The fixture measures 200-model histories at typical and maximum (32 KiB) file sizes, covering the largest individual load step, isolated save, and complete local-counter create/background-save callbacks with RF and renderer entry points stubbed. Each measured path must remain below 15,000 Lua instructions. Counts include Lua filesystem-mock overhead; they exclude native I/O time and the invoked RF/render work needed to establish a whole-radio callback budget. The separate [CPU-budget suite](../cpu_budget/README.md) includes actual rendering and retained-property callbacks while excluding Lua mock instructions.
 
 Saving compares current file contents with the previously validated base text instead of parsing unchanged history again. Reads use bounded 8 KiB chunks to reduce call overhead. Retained heap, native I/O latency and complete callbacks with RF Tool still require radio measurements.

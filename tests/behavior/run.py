@@ -16,7 +16,7 @@ calculateAdjustedPercent profileIndexValid profilePair flightStatusPending""".sp
 FUNCTIONS = """clearFrameCache applyOptions tick resetSessionEvidence
 resetSessionStats updateBatteryAlertState resetBatteryAlertState
 updateBatteryHapticTick updateEscBecAlerts updateRxPackAlert tickFlightCount
-timerElapsedSeconds getFlightCount create update refresh get updateMotorAlertGate""".split()
+timerElapsedSeconds getFlightCount create update refresh background get updateMotorAlertGate""".split()
 
 
 def instrument(source: str, variant: str) -> str:

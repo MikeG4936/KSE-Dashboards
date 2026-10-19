@@ -166,10 +166,10 @@ do
       eq(f.builds,builds,"same-type host replacement retains layout")
       local otherType=suffix=="" and "Next Nitro" or "Next Electric"
       f:connect(otherType);f:step(false,1);f:step(false,30)
-      eq(f.widget.layoutSignature,nil,"actual type change still invalidates layout")
+      eq(f.widget.layoutSignature~=nil,true,"actual type change retains layout signature")
       eq(f.builds,builds,"actual type change never rebuilds in background")
       f:step(true,1)
-      eq(f.builds,builds+1,"actual type change rebuilds once in foreground")
+      eq(f.builds,builds,"actual type change retains objects in foreground")
     end
   end
 end
@@ -265,9 +265,9 @@ eq(a.OPT.heliType,1,"background resolves Electric")
 eq(a.A.rxDeadVoiceLatched,false,"new aircraft clears prior latch")
 eq(a.D.rxVoltage,nil,"Electric clears receiver voltage")
 eq(t.builds,builds,"background never builds UI")
-eq(t.widget.layoutSignature,nil,"background invalidates layout")
+eq(t.widget.layoutSignature~=nil,true,"background retains layout for type change")
 eq(t.widget.profileWasConnected,true,"resolved Electric profiles enabled")
-t:step(true);eq(t.builds,builds+1,"foreground builds once")
+t:step(true);eq(t.builds,builds,"foreground updates retained type layout")
 eq(t.hostCalls,0,"external host never called")
 eq(t.queueCalls,0,"external queue never pumped")
 

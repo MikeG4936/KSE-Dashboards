@@ -24,6 +24,11 @@ __runIntegration=function()
   end
   local function create()
     w=t.create({x=0,y=0,w=800,h=480},opts)
+    local steps=0
+    while t.state.loading do
+      steps=steps+1;assert(steps<40,"fixture history failed to finish")
+      t.background(w)
+    end
   end
   local function qualify()
     create(); callback(0,0); callback(10,30)

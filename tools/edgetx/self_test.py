@@ -74,6 +74,44 @@ print("TRACE|stdout", 7, false)
 ''')
         completed = check.command([binaries["run"], rom, "fixture argument"], capture_output=True, text=True)
         assert completed.stdout == "TRACE|stdout\t7\tfalse\n", completed.stdout
+        measured = root / "measured.lua"
+        measured.write_text('''return {
+  call=function(mock, value) return mock(value), "source result" end,
+  caught=function()
+    local ok=pcall(function() local n=0;for i=1,100 do n=n+i end end)
+    return ok
+  end,
+  nested=function(callback) return callback() end,
+  fail=function() error("source failure") end
+}
+''')
+        rom.write_text('''local source=arg[1]
+local funcs=dofile(source)
+local fast=function(value) return value end
+local slow=function(value) for i=1,1000 do value=value+1 end;return value end
+local first,value,label=measureSource(source,0,funcs.call,fast,7)
+local second,larger=measureSource(source,0,funcs.call,slow,7)
+assert(first>0 and first==second and value==7 and larger==1007 and label=="source result")
+assert(measureSource(source..".different",0,funcs.call,slow,7)==0)
+assert(measure(funcs.call,slow,7)>second+1000)
+local function failed(callback,fragment)
+  local ok,message=pcall(callback)
+  assert(not ok and string.find(message,fragment,1,true),tostring(message))
+end
+failed(function() measureSource(source,10,funcs.caught) end,"CPU limit")
+failed(function() measureSource(source,0,funcs.fail) end,"source failure")
+failed(function() measureSource(source,0,funcs.nested,function()
+  measure(function() end)
+end) end,"nested measure")
+failed(function() measure(function() measureSource(source,0,funcs.call,fast,7) end) end,"nested measure")
+failed(function() measureSource(source,0,funcs.nested,function()
+  measureSource(source,0,funcs.call,fast,7)
+end) end,"nested measure")
+failed(function() measureSource(source,-1,funcs.call,fast,7) end,"nonnegative")
+assert(measureSource(source,0,funcs.call,fast,7)==first)
+assert(measure(function() return true end)>0)
+''')
+        check.command([binaries["run"], rom, measured], capture_output=True, text=True)
         rom.write_text('error("expected fixture failure")\n')
         completed = subprocess.run([str(binaries["run"]), str(rom)], capture_output=True)
         assert completed.returncode != 0 and b"expected fixture failure" in completed.stderr
@@ -109,7 +147,7 @@ print("TRACE|stdout", 7, false)
             raise AssertionError("modified core input accepted")
         except subprocess.CalledProcessError:
             pass
-    print("PASS: nested metadata, scoped locals, local/register gates, syntax errors, ROM libraries, fixture failures, source provenance rejection")
+    print("PASS: nested metadata, scoped locals, local/register gates, syntax errors, ROM libraries, fixture failures, exact-source budgets, source provenance rejection")
 
 
 if __name__ == "__main__":

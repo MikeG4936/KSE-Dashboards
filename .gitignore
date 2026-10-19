@@ -88,6 +88,11 @@
 !/tests/behavior/*.py
 !/tests/behavior/*.lua
 !/tests/behavior/README.md
+!/tests/cpu_budget/
+/tests/cpu_budget/*
+!/tests/cpu_budget/*.py
+!/tests/cpu_budget/*.lua
+!/tests/cpu_budget/README.md
 !/tests/msp_admission/
 /tests/msp_admission/*
 !/tests/msp_admission/*.py

@@ -955,7 +955,6 @@ local function buildUi(wgt)
   end
   buildProfileEntryPrompt(wgt)
   wgt.uiBuilt = true
-  updateUiState(wgt)
 end
 
 local function ensureLayout(wgt, fullScreen)

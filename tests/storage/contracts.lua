@@ -1,3 +1,14 @@
+-- Unit semantics drain bounded phases explicitly; cpu_budget measures each
+-- real lifecycle callback separately and prevents an unbounded caller loop.
+local function load(state)
+  Storage.beginLoad(state)
+  local steps=0
+  while state.loading do
+    steps=steps+1;assert(steps<2000,"history load did not finish")
+    Storage.stepLoad(state,0)
+  end
+  return state.cache
+end
 local function eq(name,actual,expected)
   assert(actual==expected,name..": expected "..tostring(expected)..", got "..tostring(actual))
   print("PASS|"..name)
@@ -8,7 +19,7 @@ local old=header.."Model A,7\nModel B,20\n"
 local updated=header.."Model A,8\nModel B,20\n"
 local function setup(files)
   fs.files=files or {}; fs.directories={["/"]=true}; fs.faults={}; fs.calls={}; fs.online=true
-  local s=Storage.new(path); Storage.load(s); return s
+  local s=Storage.new(path); load(s); return s
 end
 local function dirty(s)
   s.cache["Model A"]=8; Storage.markDirty(s,0)
@@ -38,19 +49,19 @@ eq("new filesystem checks root once",directoryOpens,1)
 s.cache["Model A"]=1; Storage.markDirty(s,0)
 eq("new history save",Storage.service(s,0),true)
 eq("new history serialized",fs.files[path],header.."Model A,1\n")
-fs.online=false; s=Storage.new(path); Storage.load(s)
+fs.online=false; s=Storage.new(path); load(s)
 eq("missing SD read only",s.writable,false)
 eq("missing SD visible",s.error,"STORAGE UNAVAILABLE")
 
 for _,fault in ipairs({"nil","throw",true,7,{}}) do
   setup(); fs.faults["dir:/"]=fault
-  s=Storage.new(path); Storage.load(s)
+  s=Storage.new(path); load(s)
   eq("unavailable directory read only "..tostring(fault),s.writable,false)
   eq("unavailable directory visible "..tostring(fault),s.error,"STORAGE UNAVAILABLE")
   eq("unavailable directory no cache "..tostring(fault),s.cache,nil)
 end
 setup(); fs.directories={}
-s=Storage.new(path); Storage.load(s)
+s=Storage.new(path); load(s)
 eq("missing parent read only",s.writable,false)
 eq("missing parent visible",s.error,"STORAGE UNAVAILABLE")
 local dirApi=dir
@@ -61,7 +72,7 @@ dir=dirApi
 
 for _,suffix in ipairs({"",".bak",".tmp"}) do
   setup({[path..suffix]=old}); fs.calls={}; fs.faults["dir:/"]="throw"
-  s=Storage.new(path); Storage.load(s)
+  s=Storage.new(path); load(s)
   eq("existing history independent of root open "..suffix,s.cache["Model A"],7)
   for _,call in ipairs(fs.calls) do
     eq("existing history avoids directory open "..suffix..call,string.find(call,"^dir:")==nil,true)
@@ -143,7 +154,7 @@ for _,case in ipairs(invalids) do
 end
 for _,fault in ipairs({"empty","short","throw"}) do
   fs.files={[path]=old}; fs.faults={["read:"..path]=fault}
-  s=Storage.new(path); Storage.load(s)
+  s=Storage.new(path); load(s)
   eq("main read failure blocks writes "..fault,s.writable,false)
   eq("main read failure no partial cache "..fault,s.cache,nil)
 end
@@ -234,4 +245,107 @@ eq("ROM filesystem saved contents",fs.files[path],updated)
 s=setup(); eq("ROM directory lookup initializes empty history",s.writable,true)
 setmetatable(_G,originalMeta)
 fstat=api.fstat; rename=api.rename; del=api.del; dir=api.dir
+-- Incremental loading owns a private snapshot and uses one candidate/batch
+-- per call. Re-selection and model handoff must not restart its progress.
+do
+  local rows={header}
+  for i=1,200 do rows[#rows+1]="Model "..i..",1\n" end
+  local text=table.concat(rows)
+  setup({[path]=text});fs.calls={}
+  local state=Storage.new(path)
+  Storage.beginLoad(state)
+  eq("begin load performs no filesystem work",#fs.calls,0)
+  local job=state.loading
+  Storage.stepLoad(state,0)
+  eq("partial parse has no public cache",state.cache,nil)
+  eq("partial parse is not writable",state.writable,false)
+  eq("partial parse is not a failure",state.error,nil)
+  eq("one batch bounds model rows",job.entries<=Storage.batchLines,true)
+  local entries=job.entries
+  Storage.beginLoad(state)
+  eq("begin load reuses pending job",state.loading==job,true)
+  eq("begin load retains progress",job.entries,entries)
+  Storage.increment(state,"Model 1",10)
+  Storage.increment(state,"Model 2",10)
+  eq("pending flight remains private",state.cache,nil)
+  eq("pending flight cannot save incomplete history",state.dirty,false)
+  load(state)
+  eq("load publishes all rows together",state.cache["Model 200"],1)
+  eq("first pending model applied once",state.cache["Model 1"],2)
+  eq("second pending model applied once",state.cache["Model 2"],2)
+  eq("applied pending events cleared",state.pending,nil)
+  eq("pending events dirty the complete cache",state.dirty,true)
+  eq("load completion does not write",fs.files[path],text)
+  local cache=state.cache
+  Storage.beginLoad(state)
+  eq("begin load cannot replace dirty cache",state.cache==cache,true)
+  eq("begin load cannot restart dirty history",state.loading,nil)
+  eq("later callback persists pending counts",Storage.service(state,10),true)
+
+  local broken=text.."bad row\n"
+  setup({[path]=broken,[path..".bak"]=text});fs.calls={}
+  state=Storage.new(path);Storage.beginLoad(state)
+  Storage.increment(state,"Model 1",0)
+  while state.loading.stage==1 do Storage.stepLoad(state,0) end
+  eq("late main failure yields before backup",state.loading.stage,2)
+  local backupRead=false
+  for _,call in ipairs(fs.calls) do
+    if call=="openr:"..path..".bak" then backupRead=true end
+  end
+  eq("late failure does not spend another candidate budget",backupRead,false)
+  eq("invalid main prefix never published",state.cache,nil)
+  load(state)
+  eq("backup count not modified by pending event",state.cache["Model 1"],1)
+  eq("quarantined event retained for explicit recovery",state.pending["Model 1"],1)
+  eq("pending event cannot authorize backup overwrite",state.writable,false)
+  eq("quarantined event cannot dirty",state.dirty,false)
+  eq("quarantine save rejected",Storage.service(state,0),false)
+  fs.files[path]=text
+  load(state)
+  eq("explicit valid reload applies retained event",state.cache["Model 1"],2)
+  eq("explicit recovery marks pending count dirty",state.dirty,true)
+  eq("explicit recovery clears applied pending event",state.pending,nil)
+
+  -- A foreign edit while parsing must not become the validated base text.
+  setup({[path]=text});state=Storage.new(path);Storage.beginLoad(state)
+  Storage.stepLoad(state,0)
+  local foreign=text.."Foreign,3\n";fs.files[path]=foreign
+  load(state);Storage.increment(state,"Model 1",0)
+  eq("snapshot retains originally validated bytes",state.baseText,text)
+  eq("foreign edit during parsing blocks save",Storage.service(state,0),false)
+  eq("foreign edit remains untouched",fs.files[path],foreign)
+  eq("foreign edit error retained",state.error,"HISTORY CHANGED")
+
+  setup({[path]=header.."Model 1,2147483647\n"})
+  state=Storage.new(path);Storage.beginLoad(state);Storage.increment(state,"Model 1",0)
+  load(state)
+  eq("pending event cannot overflow count",state.cache["Model 1"],2147483647)
+  eq("overflow retains unavailable event",state.pending["Model 1"],1)
+  eq("overflow warning visible",state.error,"COUNT UNAVAILABLE")
+  eq("overflow does not dirty unchanged count",state.dirty,false)
+
+  setup({[path]=header.."Model 1,2147483646\n"})
+  state=Storage.new(path);Storage.beginLoad(state)
+  Storage.increment(state,"Model 1",0);Storage.increment(state,"Model 1",0)
+  load(state)
+  eq("pending flights fill representable count",state.cache["Model 1"],2147483647)
+  eq("only excess pending flight remains",state.pending["Model 1"],1)
+  eq("representable pending flight is dirty",state.dirty,true)
+  eq("representable count persists",Storage.service(state,0),true)
+  eq("persisting maximum keeps excess warning",state.error,"COUNT UNAVAILABLE")
+  eq("excess never wraps stored count",fs.files[path],header.."Model 1,2147483647\n")
+
+  -- A row count limit alone would miss comment-heavy legal histories.
+  setup({[path]=header..string.rep("#\n",16000).."Model 1,1\n"})
+  state=Storage.new(path);Storage.beginLoad(state)
+  local steps,peak=0,0
+  while state.loading do
+    local cost=measure(Storage.stepLoad,state,0)
+    peak=math.max(peak,cost);steps=steps+1
+    assert(steps<1000,"comment-heavy history did not finish")
+  end
+  eq("comments consume bounded batches",steps>600,true)
+  eq("comment-heavy callback fits storage margin",peak<5000,true)
+  eq("comment-heavy valid history is preserved",state.cache["Model 1"],1)
+end
 print("PASS|complete")

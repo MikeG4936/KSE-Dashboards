@@ -29,17 +29,7 @@ end
 local function getFlightCache()
   flightCache = flightStore.cache
   if OPT.flightCounter ~= FC.RADIO then return {} end
-  if not flightCache then
-    flightCache = Storage.load(flightStore) or {}
-    A.flightSaveError = flightStore.error ~= nil
-  end
-  return flightCache
-end
-local function saveFlightCache()
-  if OPT.flightCounter ~= FC.RADIO then return false end
-  local ok = Storage.markDirty(flightStore, frameNow())
-  A.flightSaveError = flightStore.error ~= nil
-  return ok
+  return flightCache or {}
 end
 local function modelKey(name)
   if type(name) ~= "string" or name == "" then return "__default__" end
@@ -110,7 +100,7 @@ local function loadModelFlights()
   if flightStore.dirty then
     Storage.retry(flightStore, frameNow())
   else
-    flightCache = Storage.load(flightStore) or {}
+    Storage.beginLoad(flightStore)
   end
   A.flightSaveError = flightStore.error ~= nil
   local key = modelKey(getModelName())
@@ -483,6 +473,9 @@ local function tickFlightCount()
     clearFrameCache()
   end
   if OPT.flightCounter ~= FC.RADIO then return end
+  -- Completion may change the cache without changing the aircraft. It must
+  -- not reset the timer latch or lose a threshold observed during loading.
+  modelFlights = getFlightCache()[thisModel] or 0
   local t = getTimer0()
   if not t then return end
   local secs = timerElapsedSeconds(t)
@@ -494,16 +487,9 @@ local function tickFlightCount()
     timerThresholdArmed = true
   elseif timerThresholdArmed then
     timerThresholdArmed = false
-    local cache = getFlightCache()
-    local previous = cache[thisModel] or modelFlights or 0
-    if flightStore.writable and previous < 2147483647 then
-      cache[thisModel] = previous + 1
-      modelFlights = cache[thisModel]
-      saveFlightCache()
-    else
-      flightStore.error = flightStore.error or "COUNT UNAVAILABLE"
-      A.flightSaveError = true
-    end
+    Storage.increment(flightStore, thisModel, frameNow())
+    modelFlights = getFlightCache()[thisModel] or 0
+    A.flightSaveError = flightStore.error ~= nil
   end
 end
 local function updateStats()
@@ -523,12 +509,18 @@ local function updateStats()
 end
 
 local DATA_INTERVAL_TICKS = 10 -- 10 Hz; telemetry and UI do not need frame-rate polling
-local function serviceTelemetry(trackStats)
+local function serviceTelemetry(trackStats, building)
   local now = frameNow()
-  -- Finish an already-counted local event even after selecting the FC counter.
-  if not OPT.simTelemetry and flightStore.dirty then
-    Storage.service(flightStore, now)
+  -- Advance at most one storage phase per callback, away from UI construction.
+  -- Finish previously qualified local work even after selecting the FC counter.
+  if not OPT.simTelemetry and not building then
+    if flightStore.loading then
+      if Storage.stepLoad(flightStore, now) then A.lastDataTick = -1 end
+    elseif flightStore.dirty then
+      Storage.service(flightStore, now)
+    end
     A.flightSaveError = flightStore.error ~= nil
+                        or (flightStore.pending ~= nil and not flightStore.loading)
   end
   local last = A.lastDataTick
   if last and last >= 0 and now >= last and (now - last) < DATA_INTERVAL_TICKS then
