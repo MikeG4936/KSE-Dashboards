@@ -5395,7 +5395,8 @@ end)()
 -- BEGIN SHARED auto_heli.lua
 function AUTO_HELI.apply(widget, name)
   local heliType = AUTO_HELI.infer(name)
-  local changed = name ~= AUTO_HELI.name or heliType ~= OPT.heliType
+  local typeChanged = heliType ~= OPT.heliType
+  local changed = name ~= AUTO_HELI.name or typeChanged
                   or widget.autoHeliNeedsReset
   AUTO_HELI.ready, AUTO_HELI.name = true, name
   AUTO_HELI.provider = _G.rf2
@@ -5416,9 +5417,13 @@ function AUTO_HELI.apply(widget, name)
   A.lastDataTick = -1
   clearFrameCache()
   for key in pairs(RESOLVED) do RESOLVED[key] = nil end
-  -- The same-type aircraft change is a new session too. Rebuild only when
-  -- visible, retaining the shared host and the saved Auto setting.
-  widget.layoutSignature = nil
+  -- Names, images and counts update through retained objects. Keep their layout
+  -- for same-type sessions so confirmation does not rebuild the entire UI in
+  -- the telemetry/RF callback. A real type change still rebuilds in foreground.
+  if typeChanged then widget.layoutSignature = nil end
+  -- Background confirmation can consume the forced telemetry sample before the
+  -- next refresh. Retained labels must still update on that foreground return.
+  widget.kseUiDirty = true
 end
 
 function AUTO_HELI.sync(widget, name, waitingStatus)

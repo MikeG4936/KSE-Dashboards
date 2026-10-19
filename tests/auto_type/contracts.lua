@@ -87,6 +87,133 @@ local function fixture(selection,counter,embedded)
   return t
 end
 
+-- Initial Auto Electric confirmation must fit in one refresh without rebuilding
+-- the already-Electric layout. This is the RS4 Venom connection regression;
+-- measure includes Lua mocks but excludes native LVGL/RF execution time.
+do
+  local peak=0
+  for _,counter in ipairs({1,2}) do
+    for _,currentArm in ipairs({true,false}) do
+      local f=fixture(4,counter,true)
+      f.opts.Theme=9;f.opts.TxBatt=2;f.opts.MinFlight=20;f.opts.BattRsv=20
+      f.opts.BattVoice=1;f.opts.RxPackMin="7.2";f.opts.RxPackMax="8.40"
+      f.opts.FuelCheck=21
+      fs.files["/WIDGETS/"..variant.."/default.png"]="\137PNG\r\n\26\n"
+        .."\0\0\0\13IHDR\0\0\0\100\0\0\0\100"..string.rep("\0",30)
+      f.api.update(f.widget,f.opts)
+      f:step(true)
+      local builds=f.builds
+      __mock.values.ARM.current=currentArm
+      f:connect("RS4 Venom");f:step(true,1)
+      __mock.now=__mock.now+30
+      local cost=measure(f.api.refresh,f.widget,nil,nil)
+      peak=math.max(peak,cost)
+      assert(cost<15000,"Auto Electric confirmation exceeds mock instruction margin: "..cost)
+      eq(f.audit.AUTO_HELI.ready,true,"RS4 Venom identity confirmed")
+      eq(f.audit.OPT.heliType,1,"RS4 Venom selects Electric")
+      eq(f.builds,builds,"same-type confirmation retains layout")
+      eq(f:hasText("RS4 Venom"),true,"retained title shows initial FC identity")
+      eq(f.widget.profileWasConnected,true,"Auto Electric enters battery profile flow")
+      if not currentArm then
+        eq(#f.requests,0,"missing ARM admits no requests during confirmation")
+        eq(f:hasText("BATTERY PROFILE LOCKED"),true,"retained UI shows profile lock")
+      end
+    end
+  end
+  print("RESOURCE|Auto Electric confirmation peak="..peak.." instructions (radio APIs mocked)")
+end
+
+-- Hidden same-type changes retain the actual image/label objects, but refresh
+-- their contents immediately on return, even before the next telemetry tick.
+do
+  local png="\137PNG\r\n\26\n".."\0\0\0\13IHDR"
+    .."\0\0\0\100\0\0\0\100"..string.rep("\0",30)
+  for _,counter in ipairs({1,2}) do
+    for _,suffix in ipairs({"","N"}) do
+      local f=fixture(4,counter,true)
+      local first,second="Aircraft A"..suffix,"Aircraft B"..suffix
+      fs.files["/IMAGES/"..first..".png"]=png
+      fs.files["/IMAGES/"..second..".png"]=png
+      f:connect(first);f:settle(true)
+      local builds,objects=f.builds,f.labels
+      local imageObject
+      for _,item in ipairs(objects) do
+        if type(item.properties.file)=="function" then imageObject=item;break end
+      end
+      assert(imageObject,"retained model image missing")
+      eq(imageObject.properties.file(),"/IMAGES/"..first..".png","initial retained image")
+      f.audit.A.rxDeadVoiceLatched=true
+      local closed=0
+      f.widget.profileDialog={close=function() closed=closed+1 end}
+      f:connect(second);f:step(false,1);f:step(false,30)
+      eq(f.audit.AUTO_HELI.name,second,"hidden same-type identity confirmed")
+      eq(f.audit.A.rxDeadVoiceLatched,false,"same-type confirmation resets alert session")
+      eq(f.builds,builds,"hidden confirmation retains layout")
+      eq(closed,0,"background defers old dialog closure")
+      local sampled=f.audit.A.lastDataTick
+      f:step(true,1)
+      eq(f.audit.A.lastDataTick,sampled,"foreground precedes next telemetry sample")
+      eq(f.labels,objects,"foreground retains the same objects")
+      eq(f:hasText(second),true,"foreground immediately refreshes retained title")
+      eq(imageObject.properties.file(),"/IMAGES/"..second..".png","retained image follows new identity")
+      eq(closed,1,"foreground explicitly closes old dialog without clearing layout")
+      eq(f.widget.kseUiDirty,nil,"foreground consumes UI invalidation")
+      f:disconnect();f:step(false);f:connect(second);f:settle(true)
+      eq(f.builds,builds,"same-type reconnect retains layout")
+      f.provider.widget={state="disarmed",background=function() end}
+      f:settle(true)
+      eq(f.audit.AUTO_HELI.ready,true,"replacement host reconfirms same identity")
+      eq(f.builds,builds,"same-type host replacement retains layout")
+      local otherType=suffix=="" and "Next Nitro" or "Next Electric"
+      f:connect(otherType);f:step(false,1);f:step(false,30)
+      eq(f.widget.layoutSignature,nil,"actual type change still invalidates layout")
+      eq(f.builds,builds,"actual type change never rebuilds in background")
+      f:step(true,1)
+      eq(f.builds,builds+1,"actual type change rebuilds once in foreground")
+    end
+  end
+end
+
+-- Auto Electric must reach the ordinary two-profile selector after the read
+-- replies arrive. Deliver the 175/32 payloads through the production callbacks.
+do
+  local f=fixture(4,2,true)
+  local shown,children,closed=0,nil,0
+  lvgl.dialog=function(spec)
+    shown=shown+1
+    return {build=function(_,items) children=items end,
+      close=function() closed=closed+1;spec.close() end}
+  end
+  local capacities={}
+  for i=1,27 do capacities[i]=0 end
+  capacities[16],capacities[17]=152,8 -- 2200 mAh
+  capacities[18],capacities[19]=8,7  -- 1800 mAh
+  f.onQueue=function(q)
+    local message=table.remove(q.messageQueue,1)
+    if message then
+      assert(message.command==175 or message.command==32,"unexpected profile fixture request")
+      message.processReply(message,message.command==175 and {0} or capacities)
+    end
+  end
+  f:connect("RS4 Venom")
+  for _=1,10 do f:step(true,20) end
+  eq(f.widget.profileCapacities[1],2200,"Auto reads first battery capacity")
+  eq(f.widget.profileCapacities[2],1800,"Auto reads second battery capacity")
+  eq(shown,1,"Auto opens battery selector exactly once")
+  eq(#children,5,"two profiles plus status/retry/close")
+  eq(children[1].text,"P1  ACTIVE\n2200 mAh","selector displays active pack")
+  eq(children[2].text,"P2\n1800 mAh","selector displays second pack")
+  eq(children[2].active(),true,"second pack is selectable after confirmed disarm")
+  f:connect("Another Electric");f:step(true,1)
+  eq(closed,1,"new identity closes real retained selector")
+  local requests=#f.requests
+  children[2].press()
+  eq(#f.requests,requests,"old selector callback adds no request")
+  f:step(true,30)
+  eq(f.widget.profileSelectionRequested,nil,"new session discards old selector intent")
+  eq(#f.requests,requests,"old selector intent is never admitted for new identity")
+end
+
 local t=fixture()
 local a=t.audit
 local auto=a.AUTO_HELI

@@ -193,6 +193,8 @@ Select **Heli Type → Auto Elec/Nitro** to choose Electric or Nitro from the co
 
 Auto Elec/Nitro needs a connection to read the helicopter’s name. While it is waiting, battery warnings, battery-profile selection and counting may be unavailable. You do not need to enable RF Tool’s **Set name on TX** option.
 
+Once Electric is confirmed, the battery-profile selector works as it does in manual Electric mode: multiple configured packs open the selector after the profile data is read and disarm is confirmed. A single configured profile is handled automatically.
+
 In Auto Elec/Nitro, the helicopter’s FC name is used for the dashboard title, model image and KSE flight count. Give each helicopter a different name. Renaming one starts a separate count under the new name; its old history is kept. Check the displayed type and battery profile when connecting a different helicopter.
 
 ### One radio model for OMP M1 and M2
@@ -278,7 +280,7 @@ The first five names are required. In manual **OMPHOBBY** mode, include **M1** o
 | `INSTALL RF TOOL` or no RF connection | Check that RfTool, RfStats and `/SCRIPTS/RF2/` came from the same compatible 2.3 package; check the FC connection and firmware. |
 | `--`, `NO DATA` or missing sensors | Connect the helicopter, open KSE once, then discover sensors and check their names. See [telemetry setup](#4-configure-and-discover-telemetry) if readings are missing. |
 | `NO ARM SENSOR` or `WAITING FOR ARM TELEMETRY` | KSE needs an updating `ARM` reading from the helicopter. Wait briefly after connecting; if the message remains, follow [telemetry setup](#4-configure-and-discover-telemetry) and check that `ARM` is discovered and updating. Your physical arm switch and the Motor Switch setting do not replace this reading. |
-| Battery profiles do not open | Use Electric mode, connect and disarm the helicopter, and check that `ARM` is updating. Set a capacity above zero for each battery profile in Rotorflight. |
+| Battery profiles do not open | Use Electric mode or wait for Auto Elec/Nitro to identify Electric, connect and disarm the helicopter, and check that `ARM` is updating. Set a capacity above zero for each battery profile in Rotorflight; a single configured profile is handled automatically. |
 | `UPDATE EDGETX FOR PROFILE PICKER` | Update EdgeTX to a version supported by your radio and the installed RF Tool package. |
 | The dashboard clock does not run | Configure **EdgeTX Timer 1** to run from your motor switch, even if you use Rotorflight FC counting. |
 | No Nitro fuel reminder | Check that KSE shows Nitro, a duration is selected in **Fuel Check Timer - Nitro** rather than **Off**, and Timer 1 is running. Reselect the duration after updating from the older text setting. Reset Timer 1 before the flight; starting KSE after the selected time does not replay the reminder. Copy the complete dashboard folder for the spoken clip; if it is missing, KSE uses two beeps. Check the radio's sound/haptic settings, and close standalone Lua tools during flight. |
